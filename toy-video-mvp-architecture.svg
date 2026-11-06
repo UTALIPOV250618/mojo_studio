@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1880" height="1060" viewBox="0 0 1880 1060">
+<defs><filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0F172A" flood-opacity="0.08"/></filter>
+<marker id="ag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1F9D55"/></marker>
+<marker id="ab" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker>
+<marker id="am" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker>
+</defs>
+<rect width="1880" height="1060" fill="#F7F9FB"/>
+<text x="56" y="52" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="30" font-weight="800" fill="#1B2430" text-anchor="start">Автомонтаж тойских видео — архитектура MVP</text>
+<text x="56" y="80" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="15" font-weight="400" fill="#5B6573" text-anchor="start">Десктопная программа для монтажёра: свадьбы, тои, юбилеи</text>
+<rect x="1420" y="34" width="20" height="20" rx="5" fill="#EEF8F1" stroke="#1F9D55" stroke-width="2"/>
+<text x="1450" y="49" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="14" font-weight="500" fill="#1B2430" text-anchor="start">Локально на Windows-ПК (офлайн)</text>
+<rect x="1420" y="64" width="20" height="20" rx="5" fill="#EEF4FF" stroke="#2563EB" stroke-width="2"/>
+<text x="1450" y="79" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="14" font-weight="500" fill="#1B2430" text-anchor="start">Облако (только текст)</text>
+<rect x="24" y="370" width="1832" height="660" rx="26" fill="#EEF8F1" stroke="#1F9D55" stroke-width="1.5" stroke-dasharray="8 6"/>
+<text x="48" y="400" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700" fill="#1F9D55" text-anchor="start">WINDOWS-КОМПЬЮТЕР МОНТАЖЁРА · ВСЁ ЛОКАЛЬНО</text>
+<rect x="830" y="104" width="460" height="226" rx="26" fill="#EEF4FF" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="8 6"/>
+<text x="854" y="132" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700" fill="#2563EB" text-anchor="start">ОБЛАКО</text>
+<rect x="56" y="140" width="730" height="160" rx="20" fill="white" stroke="#2563EB" stroke-width="1.5" filter="url(#sh)"/>
+<circle cx="112" cy="220" r="30" fill="#DCE8FF"/>
+<rect fill="none" stroke="#2563EB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" x="102" y="217" width="20" height="15" rx="3"/><path fill="none" stroke="#2563EB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M106,217 v-5 a6,6 0 0 1 12,0 v5"/>
+<text x="162" y="192" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="22" font-weight="800" fill="#1E3A8A" text-anchor="start">В облако уходит только текст — не видео</text>
+<text x="162" y="222" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="14.5" font-weight="400" fill="#1B2430" text-anchor="start">Отправляются: описание видео (что и на какой минуте) + промпт монтажёра.</text>
+<text x="162" y="246" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="14.5" font-weight="400" fill="#1B2430" text-anchor="start">Сырое видео (10 ГБ), прокси-копия и музыка никогда не покидают компьютер.</text>
+<text x="162" y="270" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="14.5" font-weight="400" fill="#5B6573" text-anchor="start">Это быстро, дёшево по трафику и сохраняет приватность семьи.</text>
+<rect x="860" y="140" width="400" height="172" rx="18" fill="white" stroke="#2563EB" stroke-width="2" filter="url(#sh)"/>
+<circle cx="1060.0" cy="184" r="26" fill="#DCE8FF"/>
+<path fill="none" stroke="#2563EB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M1049.0,192 a7,7 0 0 1 0,-14 a9,9 0 0 1 17,-2 a7,7 0 0 1 5,16 z"/>
+<circle cx="880" cy="160" r="12" fill="#2563EB"/>
+<text x="880" y="164.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">6</text>
+<text x="1060.0" y="236" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#1E3A8A" text-anchor="middle">Облачная языковая модель</text>
+<text x="1060" y="268" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">Вход: описание + промпт</text>
+<text x="1060" y="288" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="600" fill="#1E3A8A" text-anchor="middle">Выход: план монтажа в JSON</text>
+<rect x="56" y="560" width="180" height="222" rx="18" fill="white" stroke="#1F9D55" stroke-width="2" filter="url(#sh)"/>
+<circle cx="146.0" cy="604" r="26" fill="#DDF3E5"/>
+<path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M134.0,610 v6 h24 v-6 M146.0,609 V592 M139.0,599 L146.0,592 L153.0,599"/>
+<circle cx="76" cy="580" r="12" fill="#1F9D55"/>
+<text x="76" y="584.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">1</text>
+<text x="146.0" y="656" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#14532D" text-anchor="middle">Загрузка</text>
+<text x="146.0" y="682" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">Монтажёр загружает</text>
+<text x="146.0" y="700" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">сырое видео (~10 ГБ)</text>
+<text x="146.0" y="718" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">и свои музыкальные</text>
+<text x="146.0" y="736" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">треки</text>
+<rect x="276" y="560" width="180" height="222" rx="18" fill="white" stroke="#1F9D55" stroke-width="2" filter="url(#sh)"/>
+<circle cx="366.0" cy="604" r="26" fill="#DDF3E5"/>
+<rect fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" x="353.0" y="594" width="26" height="20" rx="3"/><path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M359.0,594 v20 M373.0,594 v20 M353.0,604 h6 M373.0,604 h6"/>
+<circle cx="296" cy="580" r="12" fill="#1F9D55"/>
+<text x="296" y="584.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">2</text>
+<text x="366.0" y="656" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#14532D" text-anchor="middle">Подготовка</text>
+<text x="366.0" y="676" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1F9D55" text-anchor="middle">FFmpeg</text>
+<text x="366.0" y="702" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">Уменьшенная копия</text>
+<text x="366.0" y="720" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">видео (прокси) для</text>
+<text x="366.0" y="738" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">быстрого анализа</text>
+<rect x="496" y="418" width="320" height="548" rx="20" fill="white" stroke="#1F9D55" stroke-width="2" filter="url(#sh)"/>
+<circle cx="516" cy="438" r="12" fill="#1F9D55"/>
+<text x="516" y="442.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">3</text>
+<circle fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" cx="545" cy="439" r="9"/><path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M552,446 L560,454"/>
+<text x="570" y="448" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#14532D" text-anchor="start">Анализ</text>
+<text x="656.0" y="474" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#1F9D55" text-anchor="middle">локально, офлайн · 4 модуля параллельно</text>
+<rect x="512" y="494" width="288" height="102" rx="14" fill="#EEF8F1" stroke="#B7E2C6" stroke-width="1.2"/>
+<circle cx="548" cy="545" r="22" fill="white"/>
+<rect fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" x="543" y="532" width="10" height="17" rx="5"/><path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M538,544 a10,10 0 0 0 20,0 M548,554 v5"/>
+<text x="584" y="532" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="15" font-weight="700" fill="#14532D" text-anchor="start">Whisper</text>
+<text x="584" y="554" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="start">Распознавание речи,</text>
+<text x="584" y="572" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="start">поиск тостов</text>
+<rect x="512" y="610" width="288" height="102" rx="14" fill="#EEF8F1" stroke="#B7E2C6" stroke-width="1.2"/>
+<circle cx="548" cy="661" r="22" fill="white"/>
+<rect fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" x="535" y="652" width="11" height="18" rx="2"/><rect fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" x="550" y="652" width="11" height="18" rx="2"/>
+<text x="584" y="648" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="15" font-weight="700" fill="#14532D" text-anchor="start">PySceneDetect</text>
+<text x="584" y="670" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="start">Смена сцен</text>
+<rect x="512" y="726" width="288" height="102" rx="14" fill="#EEF8F1" stroke="#B7E2C6" stroke-width="1.2"/>
+<circle cx="548" cy="777" r="22" fill="white"/>
+<path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M535,777 Q548,764 561,777 Q548,790 535,777"/><circle fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" cx="548" cy="777" r="4"/>
+<text x="584" y="764" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="15" font-weight="700" fill="#14532D" text-anchor="start">OpenCV</text>
+<text x="584" y="786" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="start">Отсев размытых</text>
+<text x="584" y="804" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="start">и тёмных кадров</text>
+<rect x="512" y="842" width="288" height="102" rx="14" fill="#EEF8F1" stroke="#B7E2C6" stroke-width="1.2"/>
+<circle cx="548" cy="893" r="22" fill="white"/>
+<path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M535,893 v0 M540,888 v10 M545,882 v22 M550,886 v14 M555,890 v6 M560,885 v16"/>
+<text x="584" y="880" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="15" font-weight="700" fill="#14532D" text-anchor="start">Анализ звука</text>
+<text x="584" y="902" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="start">Танцы, аплодисменты,</text>
+<text x="584" y="920" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="start">музыка</text>
+<rect x="856" y="560" width="180" height="222" rx="18" fill="white" stroke="#1F9D55" stroke-width="2" filter="url(#sh)"/>
+<circle cx="946.0" cy="604" r="26" fill="#DDF3E5"/>
+<path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M936.0,591 h14 l6,6 v20 h-20 z M941.0,602 h10 M941.0,607 h10 M941.0,612 h7"/>
+<circle cx="876" cy="580" r="12" fill="#1F9D55"/>
+<text x="876" y="584.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">4</text>
+<text x="946.0" y="656" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#14532D" text-anchor="middle">Описание видео</text>
+<text x="946.0" y="682" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">Текстовая разметка:</text>
+<text x="946.0" y="700" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">что и на какой</text>
+<text x="946.0" y="718" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">минуте происходит</text>
+<rect x="868" y="726" width="156" height="42" rx="8" fill="#EEF8F1"/>
+<text x="946.0" y="742" font-family="'DejaVu Sans Mono', Consolas, monospace" font-size="11" font-weight="500" fill="#14532D" text-anchor="middle">12:40 тост отца</text>
+<text x="946.0" y="758" font-family="'DejaVu Sans Mono', Consolas, monospace" font-size="11" font-weight="500" fill="#14532D" text-anchor="middle">18:05 танец пары</text>
+<rect x="1066" y="560" width="180" height="222" rx="18" fill="white" stroke="#1F9D55" stroke-width="2" filter="url(#sh)"/>
+<circle cx="1156.0" cy="604" r="26" fill="#DDF3E5"/>
+<rect fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" x="1141.0" y="595" width="30" height="18" rx="3"/><path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M1147.0,601 h0 M1153.0,601 h0 M1159.0,601 h0 M1165.0,601 h0 M1150.0,607 h12"/>
+<circle cx="1086" cy="580" r="12" fill="#1F9D55"/>
+<text x="1086" y="584.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">5</text>
+<text x="1156.0" y="656" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#14532D" text-anchor="middle">Промпт</text>
+<text x="1156.0" y="676" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1F9D55" text-anchor="middle">на кыргызском</text>
+<text x="1156.0" y="702" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">Монтажёр пишет,</text>
+<text x="1156.0" y="720" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">что хочет получить</text>
+<rect x="1078" y="728" width="156" height="42" rx="8" fill="#EEF8F1"/>
+<text x="1156.0" y="744" font-family="'DejaVu Sans Mono', Consolas, monospace" font-size="11" font-weight="500" fill="#14532D" text-anchor="middle">«Тосттор жана</text>
+<text x="1156.0" y="760" font-family="'DejaVu Sans Mono', Consolas, monospace" font-size="11" font-weight="500" fill="#14532D" text-anchor="middle">бийлер, 5 мүнөт»</text>
+<rect x="1306" y="560" width="170" height="222" rx="18" fill="white" stroke="#1F9D55" stroke-width="2" filter="url(#sh)"/>
+<circle cx="1391.0" cy="604" r="26" fill="#DDF3E5"/>
+<path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M1379.0,597 h24 M1379.0,611 h24"/><circle cx="1387.0" cy="597" r="3.5" fill="white" stroke="#1F9D55" stroke-width="2.2"/><circle cx="1396.0" cy="611" r="3.5" fill="white" stroke="#1F9D55" stroke-width="2.2"/>
+<circle cx="1326" cy="580" r="12" fill="#1F9D55"/>
+<text x="1326" y="584.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">7</text>
+<text x="1391.0" y="656" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#14532D" text-anchor="middle">Редактор</text>
+<text x="1391.0" y="676" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1F9D55" text-anchor="middle">PySide6</text>
+<text x="1391.0" y="702" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">Монтажёр</text>
+<text x="1391.0" y="720" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">проверяет и правит</text>
+<text x="1391.0" y="738" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">черновик монтажа</text>
+<rect x="1506" y="560" width="180" height="240" rx="18" fill="white" stroke="#1F9D55" stroke-width="2" filter="url(#sh)"/>
+<circle cx="1596.0" cy="604" r="26" fill="#DDF3E5"/>
+<rect fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" x="1587.0" y="595" width="18" height="18" rx="3"/><path fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M1592.0,591 v4 M1600.0,591 v4 M1592.0,613 v4 M1600.0,613 v4 M1583.0,600 h4 M1583.0,608 h4 M1605.0,600 h4 M1605.0,608 h4"/>
+<circle cx="1526" cy="580" r="12" fill="#1F9D55"/>
+<text x="1526" y="584.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">8</text>
+<text x="1596.0" y="656" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#14532D" text-anchor="middle">Сборка</text>
+<text x="1596.0" y="676" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1F9D55" text-anchor="middle">FFmpeg + видеокарта</text>
+<text x="1522" y="702" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5B6573" text-anchor="start">• нарезка из оригинала</text>
+<text x="1522" y="720" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5B6573" text-anchor="start">• наложение музыки</text>
+<text x="1522" y="738" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5B6573" text-anchor="start">• приглушение музыки</text>
+<text x="1522" y="756" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5B6573" text-anchor="start">   под тостами</text>
+<text x="1522" y="774" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5B6573" text-anchor="start">• титры</text>
+<rect x="1716" y="560" width="120" height="222" rx="18" fill="white" stroke="#1F9D55" stroke-width="2" filter="url(#sh)"/>
+<circle cx="1776.0" cy="604" r="26" fill="#DDF3E5"/>
+<circle fill="none" stroke="#1F9D55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" cx="1776.0" cy="604" r="13"/><path d="M1772.0,598 L1783.0,604 L1772.0,610 z" fill="#1F9D55"/>
+<circle cx="1736" cy="580" r="12" fill="#1F9D55"/>
+<text x="1736" y="584.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12" font-weight="700" fill="white" text-anchor="middle">9</text>
+<text x="1776.0" y="656" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="16" font-weight="700" fill="#14532D" text-anchor="middle">Готовый</text>
+<text x="1776.0" y="676" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1F9D55" text-anchor="middle">клип</text>
+<text x="1776.0" y="702" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">MP4 для</text>
+<text x="1776.0" y="720" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="13" font-weight="400" fill="#5B6573" text-anchor="middle">заказчика</text>
+<path d="M238,671 H272" fill="none" stroke="#1F9D55" stroke-width="2.4" marker-end="url(#ag)"/>
+<path d="M458,671 H492" fill="none" stroke="#1F9D55" stroke-width="2.4" marker-end="url(#ag)"/>
+<path d="M818,671 H852" fill="none" stroke="#1F9D55" stroke-width="2.4" marker-end="url(#ag)"/>
+<path d="M1478,671 H1502" fill="none" stroke="#1F9D55" stroke-width="2.4" marker-end="url(#ag)"/>
+<path d="M1688,671 H1712" fill="none" stroke="#1F9D55" stroke-width="2.4" marker-end="url(#ag)"/>
+<path d="M946,558 V316" fill="none" stroke="#2563EB" stroke-width="2.4" marker-end="url(#ab)"/>
+<path d="M1156,558 V316" fill="none" stroke="#2563EB" stroke-width="2.4" marker-end="url(#ab)"/>
+<rect x="888.4" y="337" width="115.19999999999999" height="26" rx="13" fill="white" stroke="#2563EB" stroke-width="1.5"/>
+<text x="946" y="354.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="600" fill="#2563EB" text-anchor="middle">только текст</text>
+<rect x="1098.4" y="337" width="115.19999999999999" height="26" rx="13" fill="white" stroke="#2563EB" stroke-width="1.5"/>
+<text x="1156" y="354.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="600" fill="#2563EB" text-anchor="middle">только текст</text>
+<path d="M1262,226 H1391 V556" fill="none" stroke="#2563EB" stroke-width="2.4" marker-end="url(#ab)"/>
+<rect x="1306.8" y="427" width="168.4" height="26" rx="13" fill="white" stroke="#2563EB" stroke-width="1.5"/>
+<text x="1391" y="444.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="600" fill="#2563EB" text-anchor="middle">план монтажа · JSON</text>
+<text x="1404" y="476" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5B6573" text-anchor="start">отрезки, порядок,</text>
+<text x="1404" y="494" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5B6573" text-anchor="start">музыка по меткам</text>
+<text x="1404" y="512" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5B6573" text-anchor="start">времени</text>
+<path d="M146,784 V995 H1596 V804" fill="none" stroke="#64748B" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#am)"/>
+<rect x="900" y="982" width="440" height="26" rx="13" fill="white" stroke="#94A3B8"/>
+<text x="1120" y="999.5" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="12.5" font-weight="600" fill="#475569" text-anchor="middle">оригинал 10 ГБ — нарезка в полном качестве, с диска</text>
+</svg>
