@@ -9,3 +9,5 @@ build/
 *.qm
 .DS_Store
 .superpowers/
+
+spikes/data/
