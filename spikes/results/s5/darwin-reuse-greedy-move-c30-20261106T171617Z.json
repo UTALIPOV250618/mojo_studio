@@ -1,0 +1,95 @@
+{
+  "run": "reuse-greedy-move-c30",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5-move.json",
+    "mode": "chunked",
+    "naive": false,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 30.0,
+    "plan": "greedy",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 305598426,
+    "export_duration_us": 305560000,
+    "expected_frames": 7639,
+    "expected_frames_nominal": 7639.96065,
+    "timings": {
+      "chunks_s": 4.77330220802105,
+      "per_chunk_s": [
+        4.7727731250051875
+      ],
+      "audio_s": 14.648724875005428,
+      "video_and_audio_s": 19.422048958018422,
+      "mux_s": 5.128337041998748,
+      "total_s": 24.55305883300025
+    },
+    "chunks_total": 10,
+    "chunks_rendered": 1,
+    "chunks_reused": 9,
+    "chunk_frames": [
+      770,
+      792,
+      809,
+      808,
+      753,
+      799,
+      775,
+      781,
+      760,
+      592
+    ],
+    "chunk_files": [
+      "c5f3d21fa7918b25cb04fd8f.mp4",
+      "382a3ce0d75da23e5e22d812.mp4",
+      "2e5f78f75760e332590309d1.mp4",
+      "3d84de0e8a189233ef499983.mp4",
+      "010e116cfd70c6c1baf28661.mp4",
+      "3dfcf934d56c8850a49fe008.mp4",
+      "e311da74c2df2bd86dc32ca6.mp4",
+      "bb661b31c6d2e622e0815bfe.mp4",
+      "6a1ca1a9379317c41a5442f7.mp4",
+      "ff7408a7fc0c6e81f5f79370.mp4"
+    ],
+    "audio_cmdline_chars": 10269
+  },
+  "sync": null,
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "0b0c90d-dirty"
+}

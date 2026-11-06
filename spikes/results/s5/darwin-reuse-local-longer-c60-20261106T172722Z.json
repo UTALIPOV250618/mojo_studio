@@ -1,0 +1,86 @@
+{
+  "run": "reuse-local-longer-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5-longer.json",
+    "mode": "chunked",
+    "naive": false,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "local",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 307598426,
+    "export_duration_us": 307560000,
+    "expected_frames": 7689,
+    "expected_frames_nominal": 7689.96065,
+    "timings": {
+      "chunks_s": 20.729696416005027,
+      "per_chunk_s": [
+        17.859094040992204,
+        2.867988250014605
+      ],
+      "audio_s": 14.63868629198987,
+      "video_and_audio_s": 35.36841250001453,
+      "mux_s": 5.107480167003814,
+      "total_s": 40.47923716600053
+    },
+    "chunks_total": 5,
+    "chunks_rendered": 2,
+    "chunks_reused": 3,
+    "chunk_frames": [
+      1496,
+      985,
+      2972,
+      435,
+      1801
+    ],
+    "chunk_files": [
+      "ef4b91b27e2ded7ffa3c069e.mp4",
+      "aeb3500778e0d5f0ed86d892.mp4",
+      "46348f7ac4a39fa4b826629a.mp4",
+      "b75a620cc3ef005760e3c39f.mp4",
+      "7374553eeb332210a7ccac2b.mp4"
+    ],
+    "audio_cmdline_chars": 10271
+  },
+  "sync": null,
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "0b0c90d-dirty"
+}

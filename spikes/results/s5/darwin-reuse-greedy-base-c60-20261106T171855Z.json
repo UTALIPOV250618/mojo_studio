@@ -1,0 +1,89 @@
+{
+  "run": "reuse-greedy-base-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5.json",
+    "mode": "chunked",
+    "naive": false,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "greedy",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 305598426,
+    "export_duration_us": 305560000,
+    "expected_frames": 7639,
+    "expected_frames_nominal": 7639.96065,
+    "timings": {
+      "chunks_s": 45.410324875003425,
+      "per_chunk_s": [
+        9.21699995797826,
+        8.713623124989681,
+        9.464483082992956,
+        9.194005291996291,
+        8.81942745798733
+      ],
+      "audio_s": 14.574802332994295,
+      "video_and_audio_s": 59.98515066699474,
+      "mux_s": 5.173710167000536,
+      "total_s": 65.16254037499311
+    },
+    "chunks_total": 5,
+    "chunks_rendered": 5,
+    "chunks_reused": 0,
+    "chunk_frames": [
+      1562,
+      1537,
+      1560,
+      1505,
+      1475
+    ],
+    "chunk_files": [
+      "0dd77b8ba27a412c94253d9f.mp4",
+      "c7670f4ae23af535ca3c6662.mp4",
+      "c451e3651700bde9a4e1bed7.mp4",
+      "80abd3d4a5179f381002675d.mp4",
+      "1c83bf99e7fc1fa7fdec16d7.mp4"
+    ],
+    "audio_cmdline_chars": 10269
+  },
+  "sync": null,
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "0b0c90d-dirty"
+}

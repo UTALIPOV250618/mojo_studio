@@ -44,7 +44,7 @@ python -c "from pathlib import Path; from spikes.common.media import generate_se
 | Спайк | Команда |
 | --- | --- |
 | S2 плеер | _TODO (Task 2)_ |
-| S5 экспорт | _TODO (Task 3)_ |
+| S5 экспорт | `python -m spikes.s5_export.run_bench --work "spikes/data/s5/Той Студия"` (подробно: `docs/spikes/S5-export.md`) |
 | S3 анализ | _TODO (Task 4)_ |
 | S1 речь | _TODO (Task 5)_ |
 | S4 план | _TODO (Task 6)_ |
