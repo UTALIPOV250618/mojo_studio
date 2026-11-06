@@ -20,10 +20,6 @@ from toystudio.app.theme.apply import apply_theme, set_variant
 from toystudio.app.widgets.top_bar import TopBar
 
 
-def _t(text: str) -> str:
-    return QCoreApplication.translate("Shell", text)
-
-
 class Shell(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -43,9 +39,9 @@ class Shell(QMainWindow):
         page = QWidget()
         pl = QVBoxLayout(page)
         pl.setContentsMargins(32, 32, 32, 32)
-        self._title = QLabel(_t("Проекты"))
+        self._title = QLabel(QCoreApplication.translate("Shell", "Проекты"))
         self._title.setStyleSheet("font-size: 24px; font-weight: 600;")
-        self._new_btn = QPushButton(_t("Новый проект"))
+        self._new_btn = QPushButton(QCoreApplication.translate("Shell", "Новый проект"))
         set_variant(self._new_btn, "variant", "primary")
         pl.addWidget(self._title)
         pl.addWidget(self._new_btn, 0, Qt.AlignmentFlag.AlignLeft)
@@ -58,11 +54,14 @@ class Shell(QMainWindow):
     def page_title(self) -> str:
         return self._title.text()
 
-    def set_language(self, code: Literal["ru", "ky"]) -> None:
-        install_language(QApplication.instance(), code)  # type: ignore[arg-type]
+    def set_language(self, code: Literal["ru", "ky"]) -> bool:
+        ok = install_language(QApplication.instance(), code)  # type: ignore[arg-type]
+        if not ok:
+            code = "ru"  # translator unavailable: UI stays Russian, toggle must say so
         self.top_bar.set_language_checked(code)
         # installTranslator only posts LanguageChange; deliver it now so the switch is immediate.
         QApplication.sendEvent(self, QEvent(QEvent.Type.LanguageChange))
+        return ok
 
     def _on_language(self, code: str) -> None:
         self.set_language("ky" if code == "ky" else "ru")
@@ -71,8 +70,8 @@ class Shell(QMainWindow):
         apply_theme(QApplication.instance(), "light" if theme == "light" else "dark")  # type: ignore[arg-type]
 
     def retranslate(self) -> None:
-        self._title.setText(_t("Проекты"))
-        self._new_btn.setText(_t("Новый проект"))
+        self._title.setText(QCoreApplication.translate("Shell", "Проекты"))
+        self._new_btn.setText(QCoreApplication.translate("Shell", "Новый проект"))
 
     def changeEvent(self, e: QEvent) -> None:
         if e.type() == QEvent.Type.LanguageChange:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 import sys
@@ -10,20 +11,25 @@ from typing import Literal
 
 from PySide6.QtCore import QCoreApplication, QTranslator
 
+log = logging.getLogger(__name__)
 _DIR = Path(__file__).resolve().parent
 _translator: QTranslator | None = None
 
 
 def _lrelease() -> str:
-    cands = [Path(sys.executable).parent / "pyside6-lrelease", shutil.which("pyside6-lrelease")]
-    for c in cands:
-        if c and Path(c).exists():
-            return str(c)
+    names = ("pyside6-lrelease", "pyside6-lrelease.exe")
+    cands: list[str | Path | None] = []
+    scripts = Path(sys.executable).parent
+    for d in (scripts, scripts / "Scripts"):
+        cands.extend(d / n for n in names)
+    cands.extend(shutil.which(n) for n in names)
     import PySide6
 
-    bundled = Path(PySide6.__file__).parent / "lrelease"
-    if bundled.exists():
-        return str(bundled)
+    pyside_dir = Path(PySide6.__file__).parent
+    cands.extend(pyside_dir / n for n in ("lrelease", "lrelease.exe"))
+    for c in cands:
+        if c and Path(c).is_file():
+            return str(c)
     raise RuntimeError("pyside6-lrelease not found")
 
 
@@ -37,14 +43,26 @@ def build_translations() -> Path:
     return qm
 
 
-def install_language(app: QCoreApplication, code: Literal["ru", "ky"]) -> None:
-    """Install (ky) or remove (ru, the source language) the app translator."""
+def install_language(app: QCoreApplication, code: Literal["ru", "ky"]) -> bool:
+    """Install (ky) or remove (ru, the source language) the app translator.
+
+    Returns True when the requested language is active; on failure the UI stays Russian.
+    """
     global _translator
     if _translator is not None:
         app.removeTranslator(_translator)
         _translator = None
-    if code == "ky":
-        tr = QTranslator(app)
-        if tr.load(str(build_translations())):
-            app.installTranslator(tr)
-            _translator = tr
+    if code != "ky":
+        return True
+    try:
+        qm = build_translations()
+    except (RuntimeError, OSError, subprocess.CalledProcessError):
+        log.exception("could not build Kyrgyz translations; staying in Russian")
+        return False
+    tr = QTranslator(app)
+    if not tr.load(str(qm)):
+        log.error("could not load translation file %s; staying in Russian", qm)
+        return False
+    app.installTranslator(tr)
+    _translator = tr
+    return True

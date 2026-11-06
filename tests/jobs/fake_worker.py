@@ -1,4 +1,4 @@
-"""Standalone fake worker for JobManager tests: modes ok / crash / hang / partial."""
+"""Standalone fake worker for JobManager tests: modes ok / crash / crash_ru / print_stray / hang."""
 
 import os
 import sys
@@ -24,6 +24,14 @@ def main() -> None:
         _emit(Progress("fake", 1, 10, None))
         _emit(Progress("fake", 2, 10, None))
         sys.stderr.write("boom stderr\n")
+        sys.stderr.flush()
+        os._exit(3)
+    elif mode == "print_stray":
+        print("stray", end="")
+        _emit(Progress("fake", 1, 1, None))
+        _emit(Done())
+    elif mode == "crash_ru":
+        sys.stderr.buffer.write("ошибка: Свадьба Айбек\n".encode())
         sys.stderr.flush()
         os._exit(3)
     elif mode == "hang":

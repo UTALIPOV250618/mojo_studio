@@ -120,3 +120,14 @@ def test_label_inside_card_does_not_paint_bg000(qtbot):
     p = lbl.mapTo(card, lbl.rect().center())
     assert QColor(img.pixel(p.x() + 40, p.y())) != QColor("#0f1012")
     assert QColor(img.pixel(p.x() + 40, p.y())) == QColor("#1e2125")
+
+
+def test_stepper_buttons_exclusive(qtbot):
+    w = Shell()
+    qtbot.addWidget(w)
+    bar = w.top_bar
+    bar.set_step(1, 2)
+    bar._steps[1].click()  # clicking the current step must not uncheck it
+    assert [b.isChecked() for b in bar._steps] == [False, True, False, False, False]
+    bar._steps[2].click()
+    assert [b.isChecked() for b in bar._steps] == [False, False, True, False, False]

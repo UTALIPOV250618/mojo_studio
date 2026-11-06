@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt, Signal
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication, QEvent, Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QWidget
 
 from toystudio.app.theme.apply import set_variant
 from toystudio.app.widgets.elided import ElidedButton
 
-_STEPS = ("Файлы", "Анализ", "Задание", "Черновик", "Экспорт")
+_STEPS = (
+    QT_TRANSLATE_NOOP("Shell", "Файлы"),
+    QT_TRANSLATE_NOOP("Shell", "Анализ"),
+    QT_TRANSLATE_NOOP("Shell", "Задание"),
+    QT_TRANSLATE_NOOP("Shell", "Черновик"),
+    QT_TRANSLATE_NOOP("Shell", "Экспорт"),
+)
 _LANG_LABELS = {"ru": "Русский", "ky": "Кыргызча"}
-
-
-def _t(text: str) -> str:
-    return QCoreApplication.translate("Shell", text)
 
 
 class TopBar(QWidget):
@@ -33,11 +35,14 @@ class TopBar(QWidget):
         lay.addWidget(self._logo)
         lay.addSpacing(16)
         self._steps: list[ElidedButton] = []
+        self._step_group = QButtonGroup(self)
+        self._step_group.setExclusive(True)
         for i, text in enumerate(_STEPS):
-            b = ElidedButton(_t(text))
+            b = ElidedButton(QCoreApplication.translate("Shell", text))
             b.setCheckable(True)
             b.setEnabled(i == 0)
             set_variant(b, "variant", "ghost")
+            self._step_group.addButton(b)
             lay.addWidget(b)
             self._steps.append(b)
         self._current = 0
@@ -55,7 +60,7 @@ class TopBar(QWidget):
             lay.addWidget(b)
             self._lang[code] = b
         self._lang["ru"].setChecked(True)
-        self._theme_btn = QPushButton(_t("Сменить тему"))
+        self._theme_btn = QPushButton(QCoreApplication.translate("Shell", "Сменить тему"))
         set_variant(self._theme_btn, "variant", "ghost")
         self._theme_btn.clicked.connect(self._toggle_theme)
         lay.addWidget(self._theme_btn)
@@ -93,8 +98,8 @@ class TopBar(QWidget):
 
     def retranslate(self) -> None:
         for b, text in zip(self._steps, _STEPS, strict=True):
-            b.setText(_t(text))
-        self._theme_btn.setText(_t("Сменить тему"))
+            b.setText(QCoreApplication.translate("Shell", text))
+        self._theme_btn.setText(QCoreApplication.translate("Shell", "Сменить тему"))
 
     def changeEvent(self, e: QEvent) -> None:
         if e.type() == QEvent.Type.LanguageChange:

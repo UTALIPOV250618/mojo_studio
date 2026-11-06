@@ -17,6 +17,7 @@ class JobContext:
     job_id: str
 
     def report(self, msg: Message) -> None:
+        sys.stdout.flush()  # drain stray print() text so it cannot glue onto a protocol line
         sys.stdout.buffer.write(encode(msg))
         sys.stdout.buffer.flush()
 

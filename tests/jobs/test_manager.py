@@ -127,3 +127,40 @@ def test_noop_subprocess_exits_zero():
     )
     assert r.returncode == 0
     assert b'"done"' in r.stdout
+
+
+def test_crash_stderr_cyrillic_intact(qtbot, mgr):
+    with qtbot.waitSignal(mgr.failed, timeout=T) as sig:
+        mgr.start("ru", [sys.executable, FAKE, "crash_ru"])
+    assert sig.args[:2] == ["ru", "crashed"]
+    assert "ошибка: Свадьба Айбек" in sig.args[2]
+
+
+def test_stray_print_does_not_break_protocol(qtbot, mgr):
+    failures = []
+    mgr.failed.connect(lambda *a: failures.append(a))
+    with qtbot.waitSignal(mgr.finished, timeout=T):
+        mgr.start("sp", [sys.executable, FAKE, "print_stray"])
+    assert failures == []
+
+
+def test_worker_main_flushes_stray_stdout(capfdbinary):
+    from toystudio.jobs import worker_main
+
+    worker_main.JOB_KINDS["stray"] = lambda ctx: print("x", end="")
+    try:
+        assert worker_main.main(["--job", "stray", "--project", "p", "--job-id", "j"]) == 0
+    finally:
+        del worker_main.JOB_KINDS["stray"]
+    out = capfdbinary.readouterr().out
+    assert out.startswith(b"x") and out.endswith(b"\n")
+    assert out[1:].lstrip().startswith(b"{")
+
+
+def test_duplicate_job_id_rejected(qtbot, mgr):
+    mgr.start("d", [sys.executable, FAKE, "hang"])
+    with pytest.raises(ValueError):
+        mgr.start("d", [sys.executable, FAKE, "hang"])  # active
+    mgr.start("q", [sys.executable, FAKE, "ok"])
+    with pytest.raises(ValueError):
+        mgr.start("q", [sys.executable, FAKE, "ok"])  # queued

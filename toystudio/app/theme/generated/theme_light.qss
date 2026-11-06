@@ -1,4 +1,4 @@
-/* Template for tools/gen_theme.py; double-brace names are design tokens. */
+/* Generated from design/tokens.json by tools/gen_theme.py. Do not edit. */
 QMainWindow, QWidget#Root {
     background: #e9eaed;
 }

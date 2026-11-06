@@ -20,3 +20,20 @@ forbidden_modules =
     PySide6
     sqlite3
     subprocess
+
+[importlinter:contract:jobs-not-cloud]
+name = jobs does not depend on cloud
+type = forbidden
+source_modules =
+    toystudio.jobs
+forbidden_modules =
+    toystudio.cloud
+
+[importlinter:contract:worker-no-qt]
+name = worker-side jobs modules do not import Qt
+type = forbidden
+source_modules =
+    toystudio.jobs.protocol
+    toystudio.jobs.worker_main
+forbidden_modules =
+    PySide6

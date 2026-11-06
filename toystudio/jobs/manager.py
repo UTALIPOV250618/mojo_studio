@@ -8,7 +8,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QObject, QProcess, QTimer, Signal
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
 from toystudio.jobs.protocol import Done, Event, Failed, Progress, decode
 
@@ -45,6 +45,8 @@ class JobManager(QObject):
         self._active: dict[str, _Job] = {}
 
     def start(self, job_id: str, argv: list[str]) -> None:
+        if job_id in self._active or any(j.job_id == job_id for j in self._queue):
+            raise ValueError(f"job already queued or running: {job_id}")
         self._queue.append(_Job(job_id, list(argv)))
         self._pump()
 
@@ -90,6 +92,10 @@ class JobManager(QObject):
         proc.started.connect(lambda j=job: self._on_started(j))
         proc.finished.connect(lambda *_a, j=job: self._on_finished(j))
         proc.errorOccurred.connect(lambda err, j=job: self._on_error(j, err))
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert("PYTHONUTF8", "1")  # Windows: UTF-8 stderr/stdout for Cyrillic text
+        env.insert("PYTHONIOENCODING", "utf-8")
+        proc.setProcessEnvironment(env)
         proc.start(job.argv[0], job.argv[1:])
 
     def _on_started(self, job: _Job) -> None:

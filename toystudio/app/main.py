@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import getpass
+import logging
 import sys
 
 from PySide6.QtCore import Qt
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication
 
-from toystudio.app.i18n import build_translations
 from toystudio.app.shell import Shell
 from toystudio.app.theme.apply import apply_theme, load_fonts
+
+log = logging.getLogger(__name__)
 
 
 def _server_name() -> str:
@@ -31,6 +33,7 @@ def _signal_running_instance(name: str) -> bool:
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO)
     app = QApplication(sys.argv)
     name = _server_name()
     if _signal_running_instance(name):
@@ -38,7 +41,6 @@ def main() -> int:
     QLocalServer.removeServer(name)  # stale socket from a crashed run
     server = QLocalServer()
     server.listen(name)
-    build_translations()
     load_fonts()
     apply_theme(app, "dark")
     win = Shell()

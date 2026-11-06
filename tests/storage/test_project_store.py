@@ -1,3 +1,5 @@
+import dataclasses
+import json
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -5,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import tl3
-from toystudio.core.models import US_PER_S, ToiKind
+from toystudio.core.models import US_PER_S, AudioMode, Reason, ToiKind, Track
+from toystudio.core.timeline import Segment, Timeline
 from toystudio.storage.app_store import AppStore
 from toystudio.storage.project_store import ProjectStore
 from toystudio.storage.serde import timeline_from_json, timeline_to_json
@@ -161,3 +164,40 @@ def test_backup_is_atomic_and_leaves_no_tmp(tmp_path, monkeypatch):
     bak = sqlite3.connect(str(s.root / "project.db.bak"))
     assert bak.execute("SELECT name FROM project").fetchone()[0] == "Свадьба Айбек и Нурайым"
     bak.close()
+
+
+def test_serde_roundtrip_all_fields_non_default():
+    video = Segment(
+        id="v1",
+        track=Track.VIDEO,
+        media_id="m9",
+        src_in=1_000,
+        src_out=9_000,
+        moment_id="mom",
+        bound_in=0,
+        bound_out=10_000,
+        locked=True,
+        manual=True,
+        audio_mode=AudioMode.DUCK,
+        crop_x=0.25,
+        reasons=(Reason("r1", "причина", "себеп"),),
+        text="Тост",
+        anchor_id="a1",
+    )
+    music = Segment(
+        id="mu1",
+        track=Track.MUSIC,
+        media_id="song",
+        src_in=0,
+        src_out=5_000,
+        moment_id=None,
+        bound_in=0,
+        bound_out=5_000,
+        audio_mode=AudioMode.MUSIC,
+    )
+    tl = Timeline(video=(video,), music=(music,))
+    assert timeline_from_json(timeline_to_json(tl)) == tl
+    obj = json.loads(timeline_to_json(tl))
+    expected = {f.name for f in dataclasses.fields(Segment)}
+    assert set(obj["video"][0]) == expected
+    assert set(obj["music"][0]) == expected

@@ -111,6 +111,9 @@ def contrast_ratio(fg: str, bg: str) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
+QSS_HEADER = "/* Generated from design/tokens.json by tools/gen_theme.py. Do not edit. */\n"
+
+
 def _write(path: Path, text: str) -> None:
     with path.open("w", encoding="utf-8", newline="\n") as f:
         f.write(text)
@@ -120,6 +123,8 @@ def main(argv: list[str]) -> int:
     tokens_path, out_dir = Path(argv[0]), Path(argv[1])
     tokens = load_tokens(tokens_path)
     template = TEMPLATE.read_text("utf-8")
+    if template.startswith("/* Template"):  # the template's own comment is not copied to output
+        template = template.split("\n", 1)[1]
     out_dir.mkdir(parents=True, exist_ok=True)
     label = tokens.type_styles["label"]
     for theme, colors in tokens.colors.items():
@@ -127,7 +132,7 @@ def main(argv: list[str]) -> int:
         values["font-sans"] = tokens.type_styles["body"].family
         values["label-size"] = f"{label.font_size}px"
         values["label-weight"] = str(label.font_weight)
-        qss = render_qss(template, values, tokens.sizes)
+        qss = QSS_HEADER + render_qss(template, values, tokens.sizes)
         _write(out_dir / f"theme_{theme}.qss", qss)
     _write(out_dir / "tokens.py", render_tokens_py(tokens))
     return 0
