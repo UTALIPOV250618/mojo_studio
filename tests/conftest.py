@@ -1,5 +1,9 @@
 """Shared test helpers."""
 
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from toystudio.core.models import US_PER_S, Track
 from toystudio.core.timeline import Segment, Timeline
 
