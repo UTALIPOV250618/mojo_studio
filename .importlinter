@@ -1,0 +1,22 @@
+[importlinter]
+root_package = toystudio
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = Layered architecture
+type = layers
+layers =
+    toystudio.app
+    toystudio.jobs
+    toystudio.storage | toystudio.cloud | toystudio.engine
+    toystudio.core
+
+[importlinter:contract:core-pure]
+name = core is pure (no Qt, sqlite, subprocess)
+type = forbidden
+source_modules =
+    toystudio.core
+forbidden_modules =
+    PySide6
+    sqlite3
+    subprocess
