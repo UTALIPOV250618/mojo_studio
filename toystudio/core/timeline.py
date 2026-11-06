@@ -84,19 +84,32 @@ class Timeline:
         """
         old_starts = old.starts(Track.VIDEO)
         new_starts = self.starts(Track.VIDEO)
-        new_index = {s.id: i for i, s in enumerate(self.video)}
         hit = len(old.video)
         for i, (seg, start) in enumerate(zip(old.video, old_starts, strict=True)):
             if pos < start + seg.duration:
                 hit = i
                 break
-        if hit < len(old.video):
-            seg = old.video[hit]
-            if seg.id in new_index:
-                j = new_index[seg.id]
-                offset = max(0, min(pos - old_starts[hit], self.video[j].duration))
-                return new_starts[j] + offset
-        for seg in old.video[hit + 1 :]:
-            if seg.id in new_index:
-                return new_starts[new_index[seg.id]]
+        if hit == len(old.video):
+            return self.duration()
+        seg = old.video[hit]
+        src_time = seg.src_in + max(0, pos - old_starts[hit])
+        # The segment covering this source time (the original or its split twin), else clamp
+        # into the same-id segment, else the next surviving segment.
+        same = next((j for j, c in enumerate(self.video) if c.id == seg.id), None)
+        twin = self._covering(seg.media_id, src_time)
+        if twin is None and same is not None:
+            c = self.video[same]
+            return new_starts[same] + max(c.src_in, min(src_time, c.src_out)) - c.src_in
+        if twin is not None:
+            return new_starts[twin] + src_time - self.video[twin].src_in
+        new_index = {s.id: i for i, s in enumerate(self.video)}
+        for later in old.video[hit + 1 :]:
+            if later.id in new_index:
+                return new_starts[new_index[later.id]]
         return self.duration()
+
+    def _covering(self, media_id: str, src_time: int) -> int | None:
+        for j, cand in enumerate(self.video):
+            if cand.media_id == media_id and cand.src_in <= src_time < cand.src_out:
+                return j
+        return None

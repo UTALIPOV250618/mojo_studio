@@ -105,3 +105,51 @@ def test_queries():
     assert isinstance(t, Timeline)
     with pytest.raises(ValueError):
         Segment("x", t.video[0].track, "m", 5, 5, None, 0, 10)
+
+
+S = US_PER_S
+
+
+def test_trim_out_clamps_anchored_title():
+    t = trim(tl3(), "b", "out", 200 * S + 3 * S)  # b is now 3 s; t1 window 1..4 s
+    t1 = t.segment("t1")
+    assert (t1.src_in, t1.src_out, t1.bound_out) == (1 * S, 3 * S, 3 * S)
+
+
+def test_trim_out_drops_title_with_nothing_left():
+    t = trim(tl3(), "b", "out", 200 * S + 1 * S)  # b is 1 s; title starts at 1 s
+    assert t.titles == ()
+
+
+def test_trim_in_shifts_title_with_source_moment():
+    t = trim(tl3(), "b", "in", 200 * S + 1 * S)  # b now 9 s; title moves 1 s earlier
+    t1 = t.segment("t1")
+    assert (t1.src_in, t1.src_out, t1.bound_out) == (0, 3 * S, 9 * S)
+
+
+def test_split_reanchors_title_by_offset():
+    t = split(tl3(), "b", 10 * S + 3 * S, "b2")  # cut at 3 s; title 1..4 s straddles
+    t1 = t.segment("t1")
+    assert t1.anchor_id == "b" and (t1.src_in, t1.src_out, t1.bound_out) == (1 * S, 3 * S, 3 * S)
+    t = split(tl3(), "b", 10 * S + 500_000, "b2")  # cut at 0.5 s; title wholly in second half
+    t1 = t.segment("t1")
+    assert t1.anchor_id == "b2"
+    assert (t1.src_in, t1.src_out, t1.bound_out) == (500_000, 3_500_000, 9_500_000)
+
+
+def test_split_rejects_duplicate_id():
+    with pytest.raises(ValueError):
+        split(tl3(), "b", 15 * S, "c")
+
+
+def test_map_position_after_split_uses_source_time():
+    old = tl3()
+    new = split(old, "b", 15 * S, "b2")
+    assert new.map_position(old, 17 * S) == 17 * S
+    assert new.map_position(old, 12 * S) == 12 * S
+
+
+def test_map_position_after_in_trim_keeps_source_frame():
+    old = tl3()
+    new = trim(old, "b", "in", 200 * S + 2 * S)  # frame at old 17 s (source 207) -> 5 s in b
+    assert new.map_position(old, 17 * S) == 10 * S + 5 * S
