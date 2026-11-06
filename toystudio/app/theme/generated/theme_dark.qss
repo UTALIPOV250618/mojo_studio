@@ -1,8 +1,15 @@
 /* Template for tools/gen_theme.py; double-brace names are design tokens. */
-QMainWindow, QWidget {
+QMainWindow, QWidget#Root {
     background: #0f1012;
+}
+
+QWidget {
     color: #eceef1;
     font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+QLabel {
+    background: transparent;
 }
 
 QFrame#Panel {
@@ -36,10 +43,6 @@ QPushButton:hover {
     background: #32373d;
 }
 
-QPushButton:focus {
-    border: 2px solid #5fb8e6;
-}
-
 QPushButton[variant="primary"] {
     background: #b3303f;
     color: #ffffff;
@@ -62,6 +65,10 @@ QPushButton[variant="ghost"]:hover {
     color: #eceef1;
 }
 
+QPushButton[variant="ghost"]:checked {
+    color: #f2808c;
+}
+
 QPushButton[chip="true"] {
     background: #1e2125;
     border: 1px solid #6b717b;
@@ -73,6 +80,14 @@ QPushButton[chip="true"]:checked {
     background: #3a1a20;
     border: 1px solid #b3303f;
     color: #f2808c;
+}
+
+/* Placed after every variant rule so the keyboard focus ring wins on equal specificity. */
+QPushButton:focus,
+QPushButton[variant="primary"]:focus,
+QPushButton[variant="ghost"]:focus,
+QPushButton[chip="true"]:focus {
+    border: 2px solid #5fb8e6;
 }
 
 QLabel[badge] {
