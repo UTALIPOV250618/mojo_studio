@@ -33,7 +33,7 @@ class AppStore:
                 "INSERT INTO project_list(root, name, status, updated_at) VALUES (?, ?, ?, ?)"
                 " ON CONFLICT(root) DO UPDATE SET name=excluded.name, status=excluded.status,"
                 " updated_at=excluded.updated_at",
-                (str(root), name, status, updated_at.isoformat()),
+                (str(root.resolve()), name, status, updated_at.isoformat()),
             )
 
     def list_projects(self) -> list[ProjectRow]:

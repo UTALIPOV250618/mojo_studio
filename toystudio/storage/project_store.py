@@ -31,15 +31,19 @@ class ProjectStore:
         for d in CACHE_DIRS:
             (root / "cache" / d).mkdir(parents=True, exist_ok=True)
         con = connect(root / "project.db")
-        migrate(con, _PKG, root / "project.db")
-        version = int(con.execute("PRAGMA user_version").fetchone()[0])
-        now = _now()
-        with con:
-            con.execute(
-                "INSERT INTO project(id, name, kind, event_date, created_at, updated_at,"
-                " schema_version) VALUES (1, ?, ?, ?, ?, ?, ?)",
-                (name, kind.value, event_date.isoformat(), now, now, version),
-            )
+        try:
+            migrate(con, _PKG, root / "project.db")
+            version = int(con.execute("PRAGMA user_version").fetchone()[0])
+            now = _now()
+            with con:
+                con.execute(
+                    "INSERT INTO project(id, name, kind, event_date, created_at, updated_at,"
+                    " schema_version) VALUES (1, ?, ?, ?, ?, ?, ?)",
+                    (name, kind.value, event_date.isoformat(), now, now, version),
+                )
+        except BaseException:
+            con.close()
+            raise
         return cls(root, con)
 
     @classmethod
@@ -48,11 +52,15 @@ class ProjectStore:
         if not db.is_file():
             raise FileNotFoundError(db)
         con = connect(db)
-        migrate(con, _PKG, db)
-        version = int(con.execute("PRAGMA user_version").fetchone()[0])
-        with con:
-            con.execute("UPDATE project SET schema_version=? WHERE id=1", (version,))
-            con.execute("UPDATE job SET state='interrupted' WHERE state='running'")
+        try:
+            migrate(con, _PKG, db)
+            version = int(con.execute("PRAGMA user_version").fetchone()[0])
+            with con:
+                con.execute("UPDATE project SET schema_version=? WHERE id=1", (version,))
+                con.execute("UPDATE job SET state='interrupted' WHERE state='running'")
+        except BaseException:
+            con.close()
+            raise
         return cls(root, con)
 
     def close(self) -> None:

@@ -2,6 +2,8 @@ import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import tl3
 from toystudio.core.models import US_PER_S, ToiKind
 from toystudio.storage.app_store import AppStore
@@ -108,7 +110,7 @@ def test_list_projects_analysis_first(tmp_path):
     a.register_project(Path("C"), "C", "done", datetime(2026, 11, 6))
     rows = a.list_projects()
     assert [r.name for r in rows] == ["B", "C", "A"]
-    assert rows[0].root == Path("B") and rows[0].updated_at == datetime(2026, 11, 1)
+    assert rows[0].root == Path("B").resolve() and rows[0].updated_at == datetime(2026, 11, 1)
 
 
 def test_register_project_upserts(tmp_path):
@@ -117,3 +119,45 @@ def test_register_project_upserts(tmp_path):
     a.register_project(Path("A"), "A2", "done", datetime(2026, 11, 2))
     rows = a.list_projects()
     assert len(rows) == 1 and rows[0].name == "A2" and rows[0].status == "done"
+
+
+def test_register_project_normalizes_root(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    a = AppStore(tmp_path / "app.db")
+    a.register_project(Path("A"), "A", "ready", datetime(2026, 11, 1))
+    a.register_project(tmp_path / "x" / ".." / "A", "A", "ready", datetime(2026, 11, 2))
+    assert len(a.list_projects()) == 1
+
+
+def test_create_failure_closes_connection(tmp_path, monkeypatch):
+    s = new_store(tmp_path)
+    s.close()
+    opened = []
+    from toystudio.storage import project_store
+
+    real = project_store.connect
+
+    def spy(path):
+        con = real(path)
+        opened.append(con)
+        return con
+
+    monkeypatch.setattr(project_store, "connect", spy)
+    with pytest.raises(sqlite3.IntegrityError):
+        ProjectStore.create(s.root, "dup", ToiKind.TOI, date(2026, 1, 1))
+    with pytest.raises(sqlite3.ProgrammingError):
+        opened[0].execute("SELECT 1")
+
+
+def test_backup_is_atomic_and_leaves_no_tmp(tmp_path, monkeypatch):
+    s = new_store(tmp_path)
+    s.close()
+    from toystudio.storage import db
+
+    real = db._migrations
+    monkeypatch.setattr(db, "_migrations", lambda pkg: [*real(pkg), (2, "SELECT 1;")])
+    ProjectStore.open(s.root).close()
+    assert not (s.root / "project.db.bak.tmp").exists()
+    bak = sqlite3.connect(str(s.root / "project.db.bak"))
+    assert bak.execute("SELECT name FROM project").fetchone()[0] == "Свадьба Айбек и Нурайым"
+    bak.close()

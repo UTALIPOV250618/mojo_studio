@@ -1,6 +1,7 @@
 """SQLite connection and numbered-migration runner."""
 
-import shutil
+import contextlib
+import os
 import sqlite3
 from importlib import resources
 from pathlib import Path
@@ -21,6 +22,28 @@ def _migrations(package: str) -> list[tuple[int, str]]:
     return sorted(found)
 
 
+def _backup(con: sqlite3.Connection, db_path: Path) -> None:
+    """Consistent online backup into <db>.bak via tmp + fsync + os.replace."""
+    bak = db_path.with_name(db_path.name + ".bak")
+    tmp = bak.with_name(bak.name + ".tmp")
+    try:
+        dst = sqlite3.connect(str(tmp))
+        try:
+            con.backup(dst)
+        finally:
+            dst.close()
+        fd = os.open(tmp, os.O_RDWR)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, bak)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
+
+
 def migrate(con: sqlite3.Connection, package: str, db_path: Path | None = None) -> None:
     """Apply missing migrations; copy `<db>.bak` first, only if something will run."""
     current = int(con.execute("PRAGMA user_version").fetchone()[0])
@@ -28,8 +51,11 @@ def migrate(con: sqlite3.Connection, package: str, db_path: Path | None = None) 
     if not pending:
         return
     if db_path is not None and current > 0 and db_path.exists():
-        con.commit()
-        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        shutil.copy2(db_path, db_path.with_name(db_path.name + ".bak"))
+        _backup(con, db_path)
     for n, sql in pending:
-        con.executescript(f"BEGIN;\n{sql}\nPRAGMA user_version={n};\nCOMMIT;")
+        try:
+            con.executescript(f"BEGIN;\n{sql}\nPRAGMA user_version={n};\nCOMMIT;")
+        except BaseException:
+            if con.in_transaction:
+                con.rollback()
+            raise
