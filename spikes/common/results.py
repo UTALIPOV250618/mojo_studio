@@ -87,7 +87,12 @@ def ffmpeg_version() -> str | None:
 
 
 def git_rev() -> str | None:
-    return _run(["git", "rev-parse", "--short", "HEAD"])
+    root = str(Path(__file__).resolve().parents[2])
+    rev = _run(["git", "-C", root, "rev-parse", "--short", "HEAD"])
+    if rev is None:
+        return None
+    dirty = _run(["git", "-C", root, "status", "--porcelain"])
+    return f"{rev}-dirty" if dirty else rev
 
 
 def write_result(spike: str, name: str, data: dict[str, Any]) -> Path:

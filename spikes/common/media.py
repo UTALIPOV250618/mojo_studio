@@ -46,7 +46,11 @@ def generate_clip(
     path.parent.mkdir(parents=True, exist_ok=True)
     frame_dur = 1 / Fraction(fps)
     every = repr(float(flash_every_s))
-    at_event = f"gte(t,{FIRST_EVENT_S})*lt(mod(t-{FIRST_EVENT_S},{every}),{float(frame_dur)!r})"
+    # Window is one frame wide but centred on the target, so every frame time sits
+    # half a frame from the window edges and float rounding cannot match two frames.
+    half = float(frame_dur) / 2
+    start = repr(FIRST_EVENT_S - half)
+    at_event = f"gte(t,{start})*lt(mod(t-{start},{every}),{float(frame_dur)!r})"
     video = (
         f"testsrc2=size={size}:rate={fps}:duration={duration_s},"
         f"drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='{at_event}',format=yuv420p"

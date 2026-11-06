@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from spikes.common.media import SAMPLE_RATE, tool
+from spikes.common.media import SAMPLE_RATE, probe, tool
 
 FLASH_YAVG = 200.0
 BEEP_FREQ = 1000.0
@@ -21,6 +21,8 @@ _YAVG = re.compile(r"lavfi\.signalstats\.YAVG=(\S+)")
 
 
 def detect_flashes(video: Path) -> list[int]:
+    """Flash frame times in us on the container timeline (ffmpeg pts_time already
+    includes the video stream's start_time)."""
     cmd = [
         tool("ffmpeg"), "-hide_banner", "-loglevel", "error", "-i", str(video),
         "-an", "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-",
@@ -41,7 +43,16 @@ def detect_flashes(video: Path) -> list[int]:
     return out
 
 
+def _audio_start_us(path: Path) -> int:
+    for stream in probe(path)["streams"]:
+        if stream.get("codec_type") == "audio":
+            return round(float(stream.get("start_time", 0) or 0) * 1_000_000)
+    return 0
+
+
 def detect_beeps(video_or_audio: Path) -> list[int]:
+    """Beep onset times in us on the container timeline (decoded sample time plus the
+    audio stream's start_time), directly comparable with detect_flashes."""
     cmd = [
         tool("ffmpeg"), "-hide_banner", "-loglevel", "error", "-i", str(video_or_audio),
         "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-",
@@ -58,9 +69,10 @@ def detect_beeps(video_or_audio: Path) -> list[int]:
     # Goertzel-style single-bin DFT at 1 kHz (5 ms = exactly 5 cycles).
     basis = np.exp(-2j * np.pi * BEEP_FREQ * np.arange(win) / SAMPLE_RATE)
     magnitude = 2 * np.abs(frames @ basis) / win  # ~ sine amplitude
+    start_us = _audio_start_us(video_or_audio)
     out: list[int] = []
     for i in np.flatnonzero(magnitude > BEEP_THRESHOLD):
-        t_us = round(int(i) * win / SAMPLE_RATE * 1_000_000)
+        t_us = start_us + round(int(i) * win / SAMPLE_RATE * 1_000_000)
         if not out or t_us - out[-1] >= DEDUPE_US:
             out.append(t_us)
     return out

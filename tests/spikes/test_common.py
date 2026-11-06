@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("numpy")
+
 from spikes.common import results
 from spikes.common.detect import detect_beeps, detect_flashes
 from spikes.common.media import generate_clip, probe
@@ -45,3 +47,14 @@ def test_write_result_has_machine(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     data = json.loads(path.read_text("utf-8"))
     assert data["x"] == 1 and {"machine", "ffmpeg_version", "git_rev"} <= data.keys()
     assert "привет" in path.read_text("utf-8")
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize(
+    ("fps", "frame_us"), [("25", 40_000), ("50", 20_000), ("30000/1001", 33_367)]
+)
+def test_long_clip_has_exactly_one_flash_per_event(fps: str, frame_us: int, tmp_path: Path) -> None:
+    p = generate_clip(tmp_path / "long.mp4", duration_s=41, fps=fps)
+    f, b = detect_flashes(p), detect_beeps(p)
+    assert len(f) == len(b) == 20  # 1, 3, ..., 39 s
+    assert all(abs(x - y) <= frame_us for x, y in zip(f, b, strict=True))
