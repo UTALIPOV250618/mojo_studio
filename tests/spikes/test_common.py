@@ -54,7 +54,7 @@ def test_write_result_has_machine(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     ("fps", "frame_us"), [("25", 40_000), ("50", 20_000), ("30000/1001", 33_367)]
 )
 def test_long_clip_has_exactly_one_flash_per_event(fps: str, frame_us: int, tmp_path: Path) -> None:
-    p = generate_clip(tmp_path / "long.mp4", duration_s=41, fps=fps)
+    p = generate_clip(tmp_path / "long.mp4", duration_s=41, fps=fps, size="320x180")
     f, b = detect_flashes(p), detect_beeps(p)
     assert len(f) == len(b) == 20  # 1, 3, ..., 39 s
     assert all(abs(x - y) <= frame_us for x, y in zip(f, b, strict=True))
