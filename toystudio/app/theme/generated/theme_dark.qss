@@ -1,0 +1,122 @@
+/* Template for tools/gen_theme.py; double-brace names are design tokens. */
+QMainWindow, QWidget {
+    background: #0f1012;
+    color: #eceef1;
+    font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+QFrame#Panel {
+    background: #16181b;
+}
+
+QFrame#Card {
+    background: #1e2125;
+    border: 1px solid #2a2e34;
+    border-radius: 10px;
+}
+
+QWidget#TopBar {
+    background: #16181b;
+    min-height: 48px;
+    max-height: 48px;
+}
+
+QPushButton {
+    background: #272b30;
+    color: #eceef1;
+    border: 1px solid #6b717b;
+    border-radius: 6px;
+    min-height: 32px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QPushButton:hover {
+    background: #32373d;
+}
+
+QPushButton:focus {
+    border: 2px solid #5fb8e6;
+}
+
+QPushButton[variant="primary"] {
+    background: #b3303f;
+    color: #ffffff;
+    border: none;
+    min-height: 40px;
+}
+
+QPushButton[variant="primary"]:hover {
+    background: #962636;
+}
+
+QPushButton[variant="ghost"] {
+    background: transparent;
+    border: none;
+    color: #a3a9b3;
+}
+
+QPushButton[variant="ghost"]:hover {
+    background: #272b30;
+    color: #eceef1;
+}
+
+QPushButton[chip="true"] {
+    background: #1e2125;
+    border: 1px solid #6b717b;
+    border-radius: 999px;
+    padding: 0 12px;
+}
+
+QPushButton[chip="true"]:checked {
+    background: #3a1a20;
+    border: 1px solid #b3303f;
+    color: #f2808c;
+}
+
+QLabel[badge] {
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QLabel[badge="analysis"] {
+    background: #15303d;
+    color: #5fb8e6;
+}
+
+QLabel[badge="ready"] {
+    background: #3a3018;
+    color: #e8c063;
+}
+
+QLabel[badge="done"] {
+    background: #17301f;
+    color: #5cc98a;
+}
+
+QLabel[badge="error"] {
+    background: #3a1d19;
+    color: #f07a6a;
+}
+
+QLabel[badge="offline"] {
+    background: #272b30;
+    color: #a3a9b3;
+}
+
+QLineEdit, QPlainTextEdit {
+    background: #1e2125;
+    color: #eceef1;
+    border: 1px solid #6b717b;
+    border-radius: 6px;
+    padding: 8px 12px;
+    selection-background-color: #b3303f;
+    selection-color: #ffffff;
+}
+
+QLineEdit:focus, QPlainTextEdit:focus {
+    border: 2px solid #5fb8e6;
+}

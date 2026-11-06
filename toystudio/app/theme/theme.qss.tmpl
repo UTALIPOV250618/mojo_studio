@@ -1,0 +1,122 @@
+/* Template for tools/gen_theme.py; double-brace names are design tokens. */
+QMainWindow, QWidget {
+    background: {{bg-000}};
+    color: {{ink}};
+    font-family: {{font-sans}};
+}
+
+QFrame#Panel {
+    background: {{bg-100}};
+}
+
+QFrame#Card {
+    background: {{bg-200}};
+    border: 1px solid {{line-100}};
+    border-radius: {{radius-lg}};
+}
+
+QWidget#TopBar {
+    background: {{bg-100}};
+    min-height: {{size-topbar}};
+    max-height: {{size-topbar}};
+}
+
+QPushButton {
+    background: {{bg-300}};
+    color: {{ink}};
+    border: 1px solid {{line-200}};
+    border-radius: {{radius-md}};
+    min-height: {{size-control}};
+    padding: 0 {{space-4}};
+    font-size: {{label-size}};
+    font-weight: {{label-weight}};
+}
+
+QPushButton:hover {
+    background: {{bg-400}};
+}
+
+QPushButton:focus {
+    border: 2px solid {{focus}};
+}
+
+QPushButton[variant="primary"] {
+    background: {{garnet-500}};
+    color: {{ink-on-accent}};
+    border: none;
+    min-height: {{size-control-lg}};
+}
+
+QPushButton[variant="primary"]:hover {
+    background: {{garnet-600}};
+}
+
+QPushButton[variant="ghost"] {
+    background: transparent;
+    border: none;
+    color: {{ink-muted}};
+}
+
+QPushButton[variant="ghost"]:hover {
+    background: {{bg-300}};
+    color: {{ink}};
+}
+
+QPushButton[chip="true"] {
+    background: {{bg-200}};
+    border: 1px solid {{line-200}};
+    border-radius: {{radius-pill}};
+    padding: 0 {{space-3}};
+}
+
+QPushButton[chip="true"]:checked {
+    background: {{garnet-tint}};
+    border: 1px solid {{garnet-500}};
+    color: {{garnet-text}};
+}
+
+QLabel[badge] {
+    border-radius: {{radius-pill}};
+    padding: {{space-1}} {{space-2}};
+    font-size: {{label-size}};
+    font-weight: {{label-weight}};
+}
+
+QLabel[badge="analysis"] {
+    background: {{teal-tint}};
+    color: {{teal-400}};
+}
+
+QLabel[badge="ready"] {
+    background: {{status-ready-tint}};
+    color: {{status-ready}};
+}
+
+QLabel[badge="done"] {
+    background: {{status-done-tint}};
+    color: {{status-done}};
+}
+
+QLabel[badge="error"] {
+    background: {{status-error-tint}};
+    color: {{status-error}};
+}
+
+QLabel[badge="offline"] {
+    background: {{bg-300}};
+    color: {{status-offline}};
+}
+
+QLineEdit, QPlainTextEdit {
+    background: {{bg-200}};
+    color: {{ink}};
+    border: 1px solid {{line-200}};
+    border-radius: {{radius-md}};
+    padding: {{space-2}} {{space-3}};
+    selection-background-color: {{garnet-500}};
+    selection-color: {{ink-on-accent}};
+}
+
+QLineEdit:focus, QPlainTextEdit:focus {
+    border: 2px solid {{focus}};
+}
