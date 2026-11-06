@@ -663,6 +663,12 @@
       "sync_le_1_frame": true,
       "drift_lt_1ms_per_min": true,
       "frames_match_pm1": true
+    },
+    "verdict_edl": {
+      "flash_vs_edl_le_1ms": true,
+      "flash_drift_le_0.1ms_per_min": true,
+      "beep_vs_edl_le_5ms": true,
+      "beep_drift_le_0.1ms_per_min": true
     }
   },
   "machine": {

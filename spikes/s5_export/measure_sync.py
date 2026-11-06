@@ -32,6 +32,12 @@ from spikes.s5_export.plan import (
     sync_stats,
 )
 
+# Per-stream verdicts against the EDL (the Windows run is judged by these):
+FLASH_EDL_MAX_US = 1_000  # video lands on the planned output tick
+BEEP_EDL_MAX_US = 5_000  # audio at the planned sample (detector window is 5 ms)
+# 0.1 ms/min = 18 ms over a 3 h export; with +-half-frame grid rounding that is about
+# one frame at 29.97. Pass if |slope| <= 0.1 + 2 * stderr (not significantly above).
+STREAM_DRIFT_MS_PER_MIN = 0.1
 PAIR_MAX_US = 500_000  # events are 2 s apart in the source; cuts keep 0.1 s away
 DEDUPE_US = 100_000
 
@@ -66,6 +72,22 @@ def _vs_expected(errs: list[tuple[int, int]]) -> dict[str, Any]:
     }
 
 
+def edl_verdict(result: dict[str, Any]) -> dict[str, bool]:
+    """Verdicts on each stream's error against the EDL (no re-encode needed: works on
+    a stored measure() result)."""
+    out: dict[str, bool] = {}
+    for kind, limit in (("flash", FLASH_EDL_MAX_US), ("beep", BEEP_EDL_MAX_US)):
+        v = result.get(f"{kind}_vs_expected", {})
+        mx = v.get("max_abs_us")
+        out[f"{kind}_vs_edl_le_{limit // 1000}ms"] = mx is not None and mx <= limit
+        d = v.get("drift")
+        out[f"{kind}_drift_le_{STREAM_DRIFT_MS_PER_MIN}ms_per_min"] = (
+            bool(d)
+            and abs(d["slope_ms_per_min"]) <= STREAM_DRIFT_MS_PER_MIN + 2 * d["stderr_ms_per_min"]
+        )
+    return out
+
+
 def measure(video: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     fps = Fraction(manifest["fps"])
     frame_us = round(US / fps)
@@ -86,7 +108,7 @@ def measure(video: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     first_min = [abs(b - f) for f, b in pairs if f < minute]
     last_min = [abs(b - f) for f, b in pairs if f >= last_t - minute]
     drift = stats.get("drift", {})
-    return {
+    result = {
         "output": video.name,
         "fps": manifest["fps"],
         "frame_us": frame_us,
@@ -114,15 +136,33 @@ def measure(video: Path, manifest: dict[str, Any]) -> dict[str, Any]:
             "frames_match_pm1": abs(frames - expected_frames) <= 1,
         },
     }
+    result["verdict_edl"] = edl_verdict(result)
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("video")
+    ap.add_argument("video", nargs="?")
+    ap.add_argument(
+        "--reverdict", nargs="+", metavar="JSON",
+        help="recompute verdict_edl in stored result JSONs in place (no decoding)",
+    )  # fmt: skip
     ap.add_argument("--manifest")
     ap.add_argument("--name", default="sync")
     ap.add_argument("--no-write", action="store_true")
     args = ap.parse_args(argv)
+    if args.reverdict:
+        for path in map(Path, args.reverdict):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("sync"):
+                data["sync"]["verdict_edl"] = edl_verdict(data["sync"])
+                path.write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
+                print(path.name, data["sync"]["verdict_edl"])
+        return 0
+    if not args.video:
+        ap.error("video is required")
     video = Path(args.video)
     mpath = Path(args.manifest) if args.manifest else video.with_name("manifest.json")
     manifest = json.loads(mpath.read_text(encoding="utf-8"))

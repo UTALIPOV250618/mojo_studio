@@ -1,6 +1,7 @@
 import copy
 from fractions import Fraction
 
+from spikes.s5_export.build_chunks import PRESETS, audio_graph, video_chain
 from spikes.s5_export.make_edl import SOURCES, edited
 from spikes.s5_export.plan import (
     US,
@@ -71,7 +72,7 @@ def test_plan_chunks_targets_and_splits_long_piece() -> None:
 def _keys(edl: dict, local: bool, ids: dict[str, str]) -> list[str]:
     ps = quantise(edl["segments"], FPS25)
     ch = plan_chunks_local(ps, FPS25, 30, ids) if local else plan_chunks(ps, FPS25, 30)
-    return [chunk_key(c, ids, {}, []) for c in ch]
+    return [chunk_key(c, ids, {}, [], toolchain="t", graph="g") for c in ch]
 
 
 def test_local_plan_keeps_edits_local_greedy_does_not() -> None:
@@ -95,11 +96,33 @@ def test_local_plan_keeps_edits_local_greedy_does_not() -> None:
 
 def test_chunk_key_changes_only_with_content() -> None:
     ids = {"a": "/x/a.mp4|1|2"}
+    enc = ["-c:v", "libx264"]
+
+    def key(ch: list[Piece], **kw: object) -> str:
+        args: dict = {"preset": {"fps": "25"}, "toolchain": "s5|ffmpeg 8|libx264", "graph": "g"}
+        args.update(kw)
+        return chunk_key(ch, ids, args.pop("preset"), enc, **args)
+
     ch = [Piece(3, "a", 0, 50)]
-    k = chunk_key(ch, ids, {"fps": "25"}, ["-c:v", "libx264"])
-    assert k == chunk_key([Piece(7, "a", 0, 50)], ids, {"fps": "25"}, ["-c:v", "libx264"])
-    assert k != chunk_key([Piece(3, "a", 1, 50)], ids, {"fps": "25"}, ["-c:v", "libx264"])
-    assert k != chunk_key(ch, ids, {"fps": "50"}, ["-c:v", "libx264"])
+    k = key(ch)
+    assert k == key([Piece(7, "a", 0, 50)])  # segment index is not content
+    assert k != key([Piece(3, "a", 1, 50)])
+    assert k != key([Piece(3, "a", 0, 50, crop_x=120)])
+    assert k != key(ch, preset={"fps": "50"})
+    assert k != key(ch, toolchain="s5|ffmpeg 7|libx264")
+    assert k != key(ch, graph="g2")
+    assert k != key(ch, titles="ass-hash")
+    assert k != key(ch, fonts="fonts-hash")
+
+
+def test_graphs_pad_before_trim() -> None:
+    p = Piece(0, "a", 0, 38)
+    v = video_chain(0, p, PRESETS["test180"], FPS25, naive=False)
+    assert v.index("tpad=stop=-1:stop_mode=clone") < v.index("trim=end_frame=38")
+    assert "tpad" not in video_chain(0, p, PRESETS["test180"], FPS25, naive=False, pad=False)
+    a = audio_graph([{"src": "a", "in_us": 0, "dur_us": 1_520_000}], 0, 1_520_000)
+    assert a.index("apad,") < a.index("atrim=end_sample=72960")
+    assert "apad" not in audio_graph([{"src": "a", "in_us": 0, "dur_us": 1}], 0, 1, pad=False)
 
 
 def test_expected_events_on_output_timeline() -> None:

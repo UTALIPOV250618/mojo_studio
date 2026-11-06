@@ -15,7 +15,7 @@ from fractions import Fraction
 from typing import Any
 
 US = 1_000_000
-PLAN_VERSION = "s5-1"
+PLAN_VERSION = "s5-2"  # bump on any change to planning or graph templates
 
 
 # --------------------------------------------------------------------------- EDL
@@ -103,6 +103,7 @@ class Piece:
     src: str
     in_us: int
     frames: int
+    crop_x: int | None = None  # Reels 9:16 crop offset; not exercised by S5
 
 
 def quantise(segments: list[dict[str, Any]], fps: Fraction) -> list[Piece]:
@@ -110,7 +111,16 @@ def quantise(segments: list[dict[str, Any]], fps: Fraction) -> list[Piece]:
     for i, s in enumerate(segments):
         n = frames_for(int(s["dur_us"]), fps)
         if n > 0:
-            out.append(Piece(seg=i, src=str(s["src"]), in_us=int(s["in_us"]), frames=n))
+            crop = s.get("crop_x")
+            out.append(
+                Piece(
+                    seg=i,
+                    src=str(s["src"]),
+                    in_us=int(s["in_us"]),
+                    frames=n,
+                    crop_x=None if crop is None else int(crop),
+                )
+            )
     return out
 
 
@@ -128,7 +138,7 @@ def _split_long(pieces: list[Piece], fps: Fraction, size: int, limit: int) -> li
         done = 0
         while done < p.frames:
             n = min(size, p.frames - done)
-            out.append(Piece(p.seg, p.src, p.in_us + frame_time_us(done, fps), n))
+            out.append(Piece(p.seg, p.src, p.in_us + frame_time_us(done, fps), n, p.crop_x))
             done += n
     return out
 
@@ -205,18 +215,37 @@ def plan_chunks_local(
 
 
 def chunk_key(
-    chunk: list[Piece], sources: dict[str, str], preset: dict[str, Any], encoder: list[str]
+    chunk: list[Piece],
+    sources: dict[str, str],
+    preset: dict[str, Any],
+    encoder: list[str],
+    *,
+    toolchain: str,
+    graph: str,
+    titles: str | None = None,
+    fonts: str | None = None,
 ) -> str:
     """Hash of everything that determines the chunk's bytes (§9 p.2).
 
-    ``sources`` maps the source key to a stable identity (path + size + mtime).
-    The segment index is not part of the key: moving identical material keeps it.
+    - ``sources``: source key -> stable identity (resolved path + size + mtime);
+    - pieces: source, in_us, frames, crop_x (segment index is NOT part of the key, so
+      moving identical material keeps the chunk);
+    - ``preset`` and ``encoder`` arguments;
+    - ``toolchain``: program/plan version + ffmpeg build + encoder name, so chunks from
+      different builds are never mixed in one `concat -c copy` (SPS/PPS may differ);
+    - ``graph``: the exact filter graph text of the chunk (covers template constants);
+    - ``titles``: hash of the chunk's ASS (already shifted to chunk time), ``fonts``:
+      hash of the font set. S5 renders no titles; the fields exist so the key is right.
     """
     payload = {
         "v": PLAN_VERSION,
-        "pieces": [[sources[p.src], p.in_us, p.frames] for p in chunk],
+        "pieces": [[sources[p.src], p.in_us, p.frames, p.crop_x] for p in chunk],
         "preset": preset,
         "encoder": encoder,
+        "toolchain": toolchain,
+        "graph": hashlib.sha256(graph.encode("utf-8")).hexdigest(),
+        "titles": titles,
+        "fonts": fonts,
     }
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()[:24]

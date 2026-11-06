@@ -58,6 +58,7 @@ class Bench:
         plan: str = "greedy",
         jobs: int = 1,
         parallel_audio: bool = False,
+        no_pad: bool = False,
         edl_suffix: str = "",
         cache: Path | None = None,
         fresh: bool = True,
@@ -77,6 +78,8 @@ class Bench:
             argv.append("--naive")
         if parallel_audio:
             argv.append("--parallel-audio")
+        if no_pad:
+            argv.append("--no-pad")
         if cache is not None:
             argv += ["--cache", str(cache)]
         print(f"== {name}", flush=True)
@@ -129,6 +132,7 @@ def _row(m: dict[str, Any], r: dict[str, Any] | None) -> dict[str, Any]:
             expected_frames=r["expected_frames"],
             frames_diff=r["frames_diff"],
             verdict=r["verdict"],
+            verdict_edl=r.get("verdict_edl"),
         )
     return row
 
@@ -136,7 +140,7 @@ def _row(m: dict[str, Any], r: dict[str, Any] | None) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--work", required=True, help="put it under a folder named 'Той Студия'")
-    ap.add_argument("--only", default="sync,reuse,speed")
+    ap.add_argument("--only", default="sync,reuse,eof,speed")
     ap.add_argument("--encoders", default="auto", help="comma list or 'auto'")
     ap.add_argument("--edl-dir", default=str(make_edl.DEFAULT_EDL_DIR))
     args = ap.parse_args(argv)
@@ -174,6 +178,11 @@ def main(argv: list[str] | None = None) -> int:
                     b.run(f"reuse-{plan}{suffix or '-base'}-c{c}", src="src 720p", chunk_s=c,
                           cache=cache, plan=plan, edl_suffix=suffix,
                           sync=c == 30 and suffix == "-longer")  # fmt: skip
+
+    if "eof" in parts:  # segments ending at source EOF + a source with short audio
+        b.run("eof-local-x264-25-c30", src="src 720p", plan="local", edl_suffix="-eof")
+        b.run("eof-nopad-local-x264-25-c30", src="src 720p", plan="local", edl_suffix="-eof",
+              no_pad=True)  # fmt: skip
 
     if "speed" in parts:
         make_edl.make_media(work / "src 1080p", "1920x1080")

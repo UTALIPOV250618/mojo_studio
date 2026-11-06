@@ -14,6 +14,7 @@ chunked (default, §9):
   4. concat demuxer `-c copy` + WAV -> AAC 192k, +faststart.
 single: the same graph in one ffmpeg call, encoded straight to the output.
 --naive: no frame quantisation (video `-t dur`, audio exact dur) to show why it matters.
+--no-pad: no tpad/apad before trim/atrim (negative control for short sources / EOF cuts).
 
 `--encoder auto` probes h264_nvenc -> h264_qsv -> h264_amf -> h264_videotoolbox ->
 libx264 with a test frame (§9 p.5). `--list-encoders` prints what works here.
@@ -33,7 +34,9 @@ from pathlib import Path
 from typing import Any
 
 from spikes.common.media import SAMPLE_RATE, tool
+from spikes.common.results import ffmpeg_version
 from spikes.s5_export.plan import (
+    PLAN_VERSION,
     US,
     Piece,
     chunk_key,
@@ -46,6 +49,7 @@ from spikes.s5_export.plan import (
 
 PRESETS: dict[str, dict[str, Any]] = {
     "youtube1080": {"w": 1920, "h": 1080, "bitrate": "12M", "maxrate": "16M", "bufsize": "24M"},
+    "test180": {"w": 320, "h": 180, "bitrate": "1M", "maxrate": "2M", "bufsize": "2M"},  # tests
 }
 ENCODER_ORDER = ["h264_nvenc", "h264_qsv", "h264_amf", "h264_videotoolbox", "libx264"]
 MUSIC_GAIN = 0.25
@@ -119,9 +123,19 @@ def video_inputs(
     return args
 
 
-def video_chain(i: int, p: Piece, preset: dict[str, Any], fps: Fraction, naive: bool) -> str:
+def video_chain(
+    i: int, p: Piece, preset: dict[str, Any], fps: Fraction, naive: bool, pad: bool = True
+) -> str:
     w, h = preset["w"], preset["h"]
-    trim = "" if naive else f",trim=end_frame={p.frames}"
+    # trim only caps. tpad clones the last frame first, so a piece that ends at (or,
+    # after rounding up to a whole frame, just past) the source EOF still yields
+    # exactly n frames and later pieces keep their place.
+    if naive:
+        trim = ""
+    elif pad:
+        trim = f",tpad=stop=-1:stop_mode=clone,trim=end_frame={p.frames}"
+    else:
+        trim = f",trim=end_frame={p.frames}"
     return (
         f"[{i}:v]fps={fps}:start_time=0,"
         f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
@@ -130,8 +144,10 @@ def video_chain(i: int, p: Piece, preset: dict[str, Any], fps: Fraction, naive: 
     )
 
 
-def video_graph(pieces: list[Piece], preset: dict[str, Any], fps: Fraction, naive: bool) -> str:
-    parts = [video_chain(i, p, preset, fps, naive) for i, p in enumerate(pieces)]
+def video_graph(
+    pieces: list[Piece], preset: dict[str, Any], fps: Fraction, naive: bool, pad: bool = True
+) -> str:
+    parts = [video_chain(i, p, preset, fps, naive, pad) for i, p in enumerate(pieces)]
     labels = "".join(f"[v{i}]" for i in range(len(pieces)))
     parts.append(f"{labels}concat=n={len(pieces)}:v=1:a=0[vout]")
     return ";\n".join(parts)
@@ -146,14 +162,22 @@ def audio_inputs(segs: list[dict[str, Any]], src: dict[str, Path], music: Path) 
     return args
 
 
-def audio_graph(segs: list[dict[str, Any]], first_input: int, total_us: int) -> str:
-    """segs: [{src, in_us, dur_us}] with dur_us already the exported length."""
+def audio_graph(
+    segs: list[dict[str, Any]], first_input: int, total_us: int, pad: bool = True
+) -> str:
+    """segs: [{src, in_us, dur_us}] with dur_us already the exported length.
+
+    atrim only caps; apad first fills with silence, so a segment whose source audio
+    ends early (audio shorter than video, or a cut at EOF) still has exactly its
+    length and does not pull every later segment of the continuous track forward.
+    """
     parts = []
+    apad = "apad," if pad else ""
     for k, s in enumerate(segs):
         d = int(s["dur_us"]) / US
         parts.append(
             f"[{first_input + k}:a]aresample={SAMPLE_RATE},aformat=channel_layouts=stereo,"
-            f"asetpts=PTS-STARTPTS,atrim=end_sample={round(d * SAMPLE_RATE)},"
+            f"asetpts=PTS-STARTPTS,{apad}atrim=end_sample={round(d * SAMPLE_RATE)},"
             f"afade=t=in:d={FADE_S},afade=t=out:st={d - FADE_S:.6f}:d={FADE_S}[a{k}]"
         )
     labels = "".join(f"[a{k}]" for k in range(len(segs)))
@@ -235,7 +259,9 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     if args.mode == "single":
         n = len(pieces)
         graph = (
-            video_graph(pieces, preset, fps, args.naive) + ";\n" + audio_graph(asegs, n, total_us)
+            video_graph(pieces, preset, fps, args.naive, not args.no_pad)
+            + ";\n"
+            + audio_graph(asegs, n, total_us, not args.no_pad)
         )
         gfile = out / "graph.txt"
         gfile.write_text(graph, encoding="utf-8")
@@ -249,6 +275,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         timings["single_s"] = run(cmd)
     else:
         ids = {k: source_identity(p) for k, p in src.items()}
+        toolchain = f"{PLAN_VERSION}|{ffmpeg_version()}|{encoder}"
         if args.naive:
             # chunk on raw durations: reuse planner with a fake 1-us "fps"
             chunks = plan_chunks(pieces, Fraction(US), args.chunk_s)
@@ -261,14 +288,15 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         files: list[Path] = []
         chunk_frames: list[int] = []
         for ch in chunks:
-            key = chunk_key(ch, ids, {**preset, "naive": args.naive}, enc)
+            graph = video_graph(ch, preset, fps, args.naive, not args.no_pad)
+            key = chunk_key(ch, ids, preset, enc, toolchain=toolchain, graph=graph)
             f = cache / f"{key}.mp4"
             files.append(f)
             chunk_frames.append(sum(p.frames for p in ch) if not args.naive else -1)
             if f.exists():
                 continue
             gfile = cache / f"{key}.graph.txt"
-            gfile.write_text(video_graph(ch, preset, fps, args.naive), encoding="utf-8")
+            gfile.write_text(graph, encoding="utf-8")
             tmp = cache / f"{key}.part.mp4"
             cmd = [
                 *_ffmpeg(), *video_inputs(ch, src, fps, args.naive),
@@ -290,7 +318,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
 
         wav = out / "audio.wav"
         agraph = out / "audio_graph.txt"
-        agraph.write_text(audio_graph(asegs, 0, total_us), encoding="utf-8")
+        agraph.write_text(audio_graph(asegs, 0, total_us, not args.no_pad), encoding="utf-8")
         acmd = [
             *_ffmpeg(), *audio_inputs(asegs, src, music), "-/filter_complex", str(agraph),
             "-map", "[aout]", "-c:a", "pcm_s16le", str(wav),
@@ -327,6 +355,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         "edl": str(Path(args.edl).name),
         "mode": args.mode,
         "naive": args.naive,
+        "pad": not args.no_pad,
         "encoder": encoder,
         "encoder_args": enc,
         "preset": preset,
@@ -365,6 +394,9 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--cache")
     ap.add_argument("--mode", default="chunked", choices=["chunked", "single"])
     ap.add_argument("--naive", action="store_true")
+    ap.add_argument(
+        "--no-pad", action="store_true", help="negative control: no tpad/apad before trim"
+    )
     ap.add_argument("--plan", default="greedy", choices=["greedy", "local"])
     ap.add_argument("--jobs", type=int, default=1)
     ap.add_argument(
