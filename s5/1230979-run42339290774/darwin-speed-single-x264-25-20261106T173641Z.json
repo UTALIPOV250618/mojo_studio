@@ -1,0 +1,62 @@
+{
+  "run": "speed-single-x264-25",
+  "sources": "src 1080p",
+  "manifest": {
+    "edl": "edl-seed5.json",
+    "mode": "single",
+    "naive": false,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": null,
+    "plan": null,
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 305598426,
+    "export_duration_us": 305560000,
+    "expected_frames": 7639,
+    "expected_frames_nominal": 7639.96065,
+    "timings": {
+      "single_s": 68.27720062498702,
+      "total_s": 68.27943366701948
+    },
+    "cmdline_chars": 20184
+  },
+  "sync": null,
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "0b0c90d-dirty"
+}

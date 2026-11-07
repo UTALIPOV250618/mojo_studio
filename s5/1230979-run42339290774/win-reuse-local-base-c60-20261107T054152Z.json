@@ -1,0 +1,99 @@
+{
+  "run": "reuse-local-base-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5.json",
+    "mode": "chunked",
+    "naive": false,
+    "pad": true,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "local",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 305598426,
+    "export_duration_us": 305560000,
+    "expected_frames": 7639,
+    "expected_frames_nominal": 7639.96065,
+    "timings": {
+      "chunks_s": 118.59141890000001,
+      "per_chunk_s": [
+        1.3178764000003866,
+        14.500717200000054,
+        22.420012000000042,
+        16.294846399999642,
+        23.116642599999977,
+        13.83545120000008,
+        17.878639600000042,
+        9.224145300000146
+      ],
+      "audio_s": 12.629683000000114,
+      "video_and_audio_s": 131.2211096000001,
+      "mux_s": 8.182046699999773,
+      "total_s": 139.51274860000012
+    },
+    "chunks_total": 8,
+    "chunks_rendered": 8,
+    "chunks_reused": 0,
+    "chunk_frames": [
+      72,
+      925,
+      1484,
+      1085,
+      1456,
+      863,
+      1162,
+      592
+    ],
+    "chunk_files": [
+      "ce60ea048fde288ee54cef87.mp4",
+      "f9db9e7f1d1b4a32b6b6e428.mp4",
+      "f5c7e938554c846928efc124.mp4",
+      "4f6f0f27698f528577c36b57.mp4",
+      "4f0863e5397efa50e6080214.mp4",
+      "24db8b38742bce21d37f854a.mp4",
+      "6075c4bab4422b3cb0405d10.mp4",
+      "d63b7e88c232099af5a24e47.mp4"
+    ],
+    "audio_cmdline_chars": 10160
+  },
+  "sync": null,
+  "machine": {
+    "platform": "Windows-2025Server-10.0.26100-SP0",
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "ram_bytes": 17174360064,
+    "gpu": "Microsoft Hyper-V Video"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "1230979-dirty"
+}

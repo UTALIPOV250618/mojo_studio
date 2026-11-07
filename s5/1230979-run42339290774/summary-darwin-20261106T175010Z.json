@@ -1,0 +1,100 @@
+{
+  "encoders": [
+    "h264_videotoolbox",
+    "libx264"
+  ],
+  "rows": [
+    {
+      "run": "eof-local-x264-25-c30",
+      "result": "darwin-eof-local-x264-25-c30-20261106T174808Z.json",
+      "mode": "chunked",
+      "naive": false,
+      "encoder": "libx264",
+      "fps": "25",
+      "chunk_s": 30.0,
+      "plan": "local",
+      "jobs": 1,
+      "parallel_audio": false,
+      "export_s": 70.0,
+      "chunks_s": 48.5,
+      "audio_s": 15.6,
+      "mux_s": 5.9,
+      "chunks_total": 11,
+      "chunks_rendered": 11,
+      "audio_cmdline_chars": 10281,
+      "max_abs_delta_ms": 30.0,
+      "mean_delta_ms": 1.306,
+      "drift_ms_per_min": 0.037,
+      "drift_stderr": 0.716,
+      "beep_err_max_ms": 4.161,
+      "flash_err_max_ms": 0.0,
+      "beep_drift_ms_per_min": 0.0393,
+      "flash_drift_ms_per_min": 0.0,
+      "n_pairs": 134,
+      "frames": 7658,
+      "expected_frames": 7658,
+      "frames_diff": 0,
+      "verdict": {
+        "sync_le_1_frame": true,
+        "drift_lt_1ms_per_min": true,
+        "frames_match_pm1": true
+      },
+      "verdict_edl": {
+        "flash_vs_edl_le_1ms": true,
+        "flash_drift_le_0.1ms_per_min": true,
+        "beep_vs_edl_le_5ms": true,
+        "beep_drift_le_0.1ms_per_min": true
+      }
+    },
+    {
+      "run": "eof-nopad-local-x264-25-c30",
+      "result": "darwin-eof-nopad-local-x264-25-c30-20261106T175010Z.json",
+      "mode": "chunked",
+      "naive": false,
+      "encoder": "libx264",
+      "fps": "25",
+      "chunk_s": 30.0,
+      "plan": "local",
+      "jobs": 1,
+      "parallel_audio": false,
+      "export_s": 69.4,
+      "chunks_s": 48.8,
+      "audio_s": 15.0,
+      "mux_s": 5.5,
+      "chunks_total": 11,
+      "chunks_rendered": 11,
+      "audio_cmdline_chars": 10293,
+      "max_abs_delta_ms": 325.0,
+      "mean_delta_ms": -207.015,
+      "drift_ms_per_min": -66.72,
+      "drift_stderr": 5.253,
+      "beep_err_max_ms": 302.173,
+      "flash_err_max_ms": 0.0,
+      "beep_drift_ms_per_min": -63.8718,
+      "flash_drift_ms_per_min": 0.0,
+      "n_pairs": 134,
+      "frames": 7658,
+      "expected_frames": 7658,
+      "frames_diff": 0,
+      "verdict": {
+        "sync_le_1_frame": false,
+        "drift_lt_1ms_per_min": false,
+        "frames_match_pm1": true
+      },
+      "verdict_edl": {
+        "flash_vs_edl_le_1ms": true,
+        "flash_drift_le_0.1ms_per_min": true,
+        "beep_vs_edl_le_5ms": false,
+        "beep_drift_le_0.1ms_per_min": false
+      }
+    }
+  ],
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "57a090a-dirty"
+}
