@@ -55,7 +55,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: s5-windows-results
-          path: spikes/results/s5/*win-*.json
+          path: |
+            spikes/results/s5/win-*.json
+            spikes/results/s5/summary-win-*.json
           if-no-files-found: warn
       - name: Publish results to ci/spike-results
         if: always()
@@ -63,7 +65,7 @@ jobs:
         run: |
           set -e
           mkdir -p "$RUNNER_TEMP/out"
-          cp spikes/results/s5/*win-*.json "$RUNNER_TEMP/out/" 2>/dev/null || { echo "no results"; exit 0; }
+          cp spikes/results/s5/win-*.json spikes/results/s5/summary-win-*.json "$RUNNER_TEMP/out/" 2>/dev/null || { echo "no results"; exit 0; }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git fetch origin ci/spike-results; then
