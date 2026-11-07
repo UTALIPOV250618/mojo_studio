@@ -1,0 +1,43 @@
+{
+  "seconds": 60.0,
+  "runs": {
+    "decode_only": {
+      "wall_s": 18.24,
+      "x_rt": 3.3,
+      "rc": 0,
+      "err": ""
+    },
+    "decode_scale540": {
+      "wall_s": 20.37,
+      "x_rt": 2.9,
+      "rc": 0,
+      "err": ""
+    },
+    "proxy_x264_ultrafast": {
+      "wall_s": 21.17,
+      "x_rt": 2.8,
+      "rc": 0,
+      "err": ""
+    },
+    "proxy_x264_superfast": {
+      "wall_s": 21.7,
+      "x_rt": 2.8,
+      "rc": 0,
+      "err": ""
+    },
+    "proxy_x264_veryfast": {
+      "wall_s": 21.95,
+      "x_rt": 2.7,
+      "rc": 0,
+      "err": ""
+    }
+  },
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "e3c1850-dirty"
+}
