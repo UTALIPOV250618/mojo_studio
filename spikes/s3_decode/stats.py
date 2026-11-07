@@ -74,7 +74,9 @@ class ResourceSampler:
             total = 0
             for name, proc in self.procs.items():
                 try:
-                    rss = proc.memory_info().rss
+                    mi = proc.memory_info()
+                    # Windows: working set (rss) shrinks under pressure; `private` is committed
+                    rss = max(mi.rss, getattr(mi, "private", 0))
                 except psutil.Error:
                     continue
                 self.peak_rss[name] = max(self.peak_rss.get(name, 0), rss)

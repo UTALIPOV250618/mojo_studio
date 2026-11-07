@@ -7,6 +7,7 @@ bitrate to camera-like values (testsrc2 alone decodes unrealistically fast).
 
 from __future__ import annotations
 
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -90,3 +91,81 @@ def marker_quadrant(frame: np.ndarray) -> tuple[str, float]:
     means = np.array([float(x.mean()) for x in q]) / 255.0
     order = np.argsort(means)[::-1]
     return QUADRANTS[int(order[0])], float(means[order[0]] - means[order[1]])
+
+
+def make_h264_xavc_like(
+    path: Path, *, duration_s: float, fps: str = "50", size: str = "1920x1080", mbps: int = 80
+) -> Path:
+    """Harsh camera-like load: 1080p50, ~80 Mbit/s, long GOP, motion everywhere + noise.
+
+    `scroll` moves the whole picture every frame (real motion compensation work, unlike a
+    static pattern with noise); keyint = 1 s, B-frames on, like Sony XAVC S long GOP.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    video = (
+        f"testsrc2=size={size}:rate={fps}:duration={duration_s},"
+        "scroll=horizontal=0.013:vertical=0.007,noise=alls=22:allf=t+u,"
+        f"{MARKER},format=yuv420p"
+    )
+    gop = int(float(Fraction(fps)))
+    run_ffmpeg(
+        [
+            "-f", "lavfi", "-i", video,
+            "-f", "lavfi", "-i", f"sine=frequency=440:sample_rate=48000:duration={duration_s}",
+            "-c:v", "libx264", "-preset", "veryfast", "-b:v", f"{mbps}M",
+            "-maxrate", f"{mbps * 6 // 5}M", "-bufsize", f"{mbps * 2}M",
+            "-g", str(gop), "-bf", "2",
+            "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-shortest", str(path),
+        ]
+    )  # fmt: skip
+    return path
+
+
+def make_hlg_ramp(path: Path, *, duration_s: float = 3.0, size: str = "1920x1080") -> Path:
+    """HLG test ramp: the SIGNAL goes 0..1 left to right (10-bit limited range), BT.2020/HLG tags.
+
+    The pixel values ARE HLG-coded, so a correct HDR->SDR conversion must give a monotonic
+    ramp from black to SDR white with highlight separation and no clipping plateau.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    x265 = "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:log-level=error"
+    video = (
+        f"color=c=black:s={size}:r=25:d={duration_s},format=yuv420p10le,"
+        "geq=lum='64+876*X/W':cb=512:cr=512"
+    )
+    run_ffmpeg(
+        [
+            "-f", "lavfi", "-i", video, "-f", "lavfi",
+            "-i", f"sine=frequency=330:sample_rate=48000:duration={duration_s}",
+            "-c:v", "libx265", "-preset", "ultrafast", "-crf", "12", "-x265-params", x265,
+            "-tag:v", "hvc1", "-color_primaries", "bt2020", "-color_trc", "arib-std-b67",
+            "-colorspace", "bt2020nc", "-c:a", "aac", "-shortest", str(path),
+        ]
+    )  # fmt: skip
+    return path
+
+
+def analyze_ramp(row: np.ndarray) -> dict[str, float | bool]:
+    """Pixel-level SDR check of one proxy luma row of the HLG ramp (uint8, left to right)."""
+    r = row.astype(np.float32)
+    n = r.size
+    sm = np.convolve(r, np.ones(5, dtype=np.float32) / 5, mode="valid")
+    drops = int((np.diff(sm) < -1.5).sum())
+    sep = float(r[int(0.93 * n) : int(0.97 * n)].mean() - r[int(0.83 * n) : int(0.87 * n)].mean())
+    out: dict[str, float | bool] = {
+        "p1": float(np.percentile(r, 1)),
+        "p50": float(np.percentile(r, 50)),
+        "p99": float(np.percentile(r, 99)),
+        "clipped_frac": float((r >= 234).mean()),
+        "black_level": float(r[: max(1, n // 50)].mean()),
+        "monotonic_drops": float(drops),
+        "highlight_separation": sep,
+    }
+    out["pass"] = bool(
+        out["black_level"] <= 24
+        and drops == 0
+        and out["clipped_frac"] <= 0.02
+        and sep >= 3.0
+        and out["p99"] - out["p1"] >= 100
+    )
+    return out

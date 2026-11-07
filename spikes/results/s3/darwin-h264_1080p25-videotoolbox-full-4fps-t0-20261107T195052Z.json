@@ -3,6 +3,7 @@
   "hwaccel": "videotoolbox",
   "mode": "full",
   "metric_fps": 4.0,
+  "threads": 0,
   "info": {
     "size_displayed": [
       1920,
@@ -19,21 +20,24 @@
   "stats": {
     "tonemap": "none",
     "media_s": 240.0,
-    "wall_s": 25.826136791001773,
-    "x_rt": 9.29291136116106,
+    "wall_s": 25.755898915987927,
+    "x_rt": 9.318253685605997,
     "returncode": 0,
-    "ffmpeg_cpu_s": 63.10486399999991,
-    "ffmpeg_cpu_pct": 244.3449615042178,
-    "python_cpu_s": 0.4755441919999992,
-    "python_cpu_pct": 1.841329176904562,
-    "ffmpeg_peak_mb": 242.5625,
-    "python_peak_mb": 49.078125,
-    "total_peak_mb": 291.640625,
+    "ffmpeg_cpu_s": 63.25197800000001,
+    "ffmpeg_cpu_pct": 245.58249046682062,
+    "python_cpu_s": 0.47328076799999996,
+    "python_cpu_pct": 1.837562608642682,
+    "ffmpeg_peak_mb": 241.9375,
+    "python_peak_mb": 62.75,
+    "total_peak_mb": 304.6875,
     "frames": 960,
     "partial_bytes": 0,
-    "metric_compute_s": 0.4145612480060663,
-    "pipe_wait_s": 25.402986998320557,
+    "metric_compute_s": 0.4087279590021353,
+    "pipe_wait_s": 25.33729780939757,
     "out_time_s": 240.0,
+    "hw_active": true,
+    "hw_format": "videotoolbox_vld",
+    "hw_fallback_warning": false,
     "stderr_tail": []
   },
   "command": [
@@ -42,7 +46,7 @@
     "-nostdin",
     "-nostats",
     "-loglevel",
-    "error",
+    "warning",
     "-progress",
     "pipe:2",
     "-y",
@@ -72,7 +76,7 @@
     "bt709",
     "-movflags",
     "+faststart",
-    "spikes/data/s3/runs/h264_1080p25-videotoolbox-full-4/proxy.mp4",
+    "spikes/data/s3/runs/h264_1080p25-videotoolbox-full-4-t0/proxy.mp4",
     "-map",
     "0:a:0",
     "-ac",
@@ -81,7 +85,7 @@
     "16000",
     "-c:a",
     "pcm_s16le",
-    "spikes/data/s3/runs/h264_1080p25-videotoolbox-full-4/audio.wav",
+    "spikes/data/s3/runs/h264_1080p25-videotoolbox-full-4-t0/audio.wav",
     "-map",
     "[m]",
     "-f",
@@ -103,19 +107,23 @@
     "proxy_rotation": false,
     "proxy_mb": 16.73,
     "proxy_short_side_540": true,
-    "proxy_sdr": true,
+    "proxy_tags_sdr": null,
     "proxy_aspect_ok": true,
     "marker_found": "top-left",
     "marker_expected": "top-left",
-    "marker_lead": 0.305,
+    "marker_lead": 0.25,
     "orientation_ok": true,
-    "proxy_mean_luma": 146.1,
+    "proxy_mean_luma": 141.9,
     "wav_rate": 16000,
     "wav_channels": 1,
     "wav_ok": true
   },
   "repeats_x_rt": [
-    9.29
+    9.32
+  ],
+  "x_rt_min_max": [
+    9.32,
+    9.32
   ],
   "machine": {
     "platform": "macOS-27.0.1-arm64-arm-64bit",
@@ -124,5 +132,5 @@
     "gpu": "Apple M1"
   },
   "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
-  "git_rev": "e3c1850-dirty"
+  "git_rev": "8307686-dirty"
 }

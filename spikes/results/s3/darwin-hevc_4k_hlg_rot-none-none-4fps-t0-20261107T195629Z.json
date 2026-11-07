@@ -1,8 +1,9 @@
 {
   "source": "hevc_4k_hlg_rot",
   "hwaccel": "none",
-  "mode": "full",
-  "metric_fps": 25.0,
+  "mode": "none",
+  "metric_fps": 4.0,
+  "threads": 0,
   "info": {
     "size_displayed": [
       2160,
@@ -19,21 +20,24 @@
   "stats": {
     "tonemap": "fallback",
     "media_s": 90.0,
-    "wall_s": 32.69442420898122,
-    "x_rt": 2.7527629611925337,
+    "wall_s": 32.34573979198467,
+    "x_rt": 2.7824375197101583,
     "returncode": 0,
-    "ffmpeg_cpu_s": 242.55576500000006,
-    "ffmpeg_cpu_pct": 741.8872510174673,
-    "python_cpu_s": 1.3386563199999983,
-    "python_cpu_pct": 4.094448372735884,
-    "ffmpeg_peak_mb": 661.859375,
-    "python_peak_mb": 49.171875,
-    "total_peak_mb": 711.03125,
-    "frames": 2250,
+    "ffmpeg_cpu_s": 241.66607300000032,
+    "ffmpeg_cpu_pct": 747.1341652846833,
+    "python_cpu_s": 0.07118438400000038,
+    "python_cpu_pct": 0.2200734453989517,
+    "ffmpeg_peak_mb": 659.15625,
+    "python_peak_mb": 62.890625,
+    "total_peak_mb": 722.046875,
+    "frames": 0,
     "partial_bytes": 0,
-    "metric_compute_s": 1.1847045049944427,
-    "pipe_wait_s": 31.483395364368334,
+    "metric_compute_s": 0.0,
+    "pipe_wait_s": 0.0,
     "out_time_s": 90.0,
+    "hw_active": null,
+    "hw_format": null,
+    "hw_fallback_warning": false,
     "stderr_tail": []
   },
   "command": [
@@ -49,7 +53,7 @@
     "-i",
     "spikes/data/s3/hevc_4k_hlg_rot.mp4",
     "-filter_complex",
-    "[0:v:0]scale=540:-2,colorspace=all=bt709:iall=bt2020:fast=1,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,fps=fps=30,format=yuv420p,split=2[proxy][t];[t]fps=fps=25,scale=90:160:flags=area,format=gray[m]",
+    "[0:v:0]scale=540:-2,colorspace=all=bt709:iall=bt2020:fast=1,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,fps=fps=30,format=yuv420p[proxy]",
     "-map",
     "[proxy]",
     "-c:v",
@@ -70,7 +74,7 @@
     "bt709",
     "-movflags",
     "+faststart",
-    "spikes/data/s3/runs/hevc_4k_hlg_rot-none-full-25/proxy.mp4",
+    "spikes/data/s3/runs/hevc_4k_hlg_rot-none-none-4-t0/proxy.mp4",
     "-map",
     "0:a:0",
     "-ac",
@@ -79,14 +83,7 @@
     "16000",
     "-c:a",
     "pcm_s16le",
-    "spikes/data/s3/runs/hevc_4k_hlg_rot-none-full-25/audio.wav",
-    "-map",
-    "[m]",
-    "-f",
-    "rawvideo",
-    "-pix_fmt",
-    "gray",
-    "pipe:1"
+    "spikes/data/s3/runs/hevc_4k_hlg_rot-none-none-4-t0/audio.wav"
   ],
   "verify": {
     "proxy_codec": "h264",
@@ -101,19 +98,30 @@
     "proxy_rotation": false,
     "proxy_mb": 4.14,
     "proxy_short_side_540": true,
-    "proxy_sdr": true,
+    "proxy_tags_sdr": true,
     "proxy_aspect_ok": true,
     "marker_found": "top-right",
     "marker_expected": "top-right",
-    "marker_lead": 0.307,
+    "marker_lead": 0.251,
     "orientation_ok": true,
-    "proxy_mean_luma": 146.3,
+    "proxy_mean_luma": 143.2,
+    "proxy_luma_p1_p50_p99": [
+      33.0,
+      173.0,
+      235.0
+    ],
+    "proxy_clipped_frac": 0.1583,
+    "proxy_frame_jpg": "results/s3/frames/darwin-hevc_4k_hlg_rot-none-t0.jpg",
     "wav_rate": 16000,
     "wav_channels": 1,
     "wav_ok": true
   },
   "repeats_x_rt": [
-    2.75
+    2.78
+  ],
+  "x_rt_min_max": [
+    2.78,
+    2.78
   ],
   "machine": {
     "platform": "macOS-27.0.1-arm64-arm-64bit",
@@ -122,5 +130,5 @@
     "gpu": "Apple M1"
   },
   "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
-  "git_rev": "e3c1850-dirty"
+  "git_rev": "8307686-dirty"
 }

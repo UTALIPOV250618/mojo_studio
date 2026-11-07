@@ -1,8 +1,9 @@
 {
   "source": "h264_1080p25",
-  "hwaccel": "videotoolbox",
-  "mode": "drain",
+  "hwaccel": "none",
+  "mode": "full",
   "metric_fps": 4.0,
+  "threads": 0,
   "info": {
     "size_displayed": [
       1920,
@@ -19,21 +20,24 @@
   "stats": {
     "tonemap": "none",
     "media_s": 240.0,
-    "wall_s": 25.793821666011354,
-    "x_rt": 9.304553745761885,
+    "wall_s": 21.52509400001145,
+    "x_rt": 11.149777092721283,
     "returncode": 0,
-    "ffmpeg_cpu_s": 62.95233099999996,
-    "ffmpeg_cpu_pct": 244.05972800437152,
-    "python_cpu_s": 0.06642556799999877,
-    "python_cpu_pct": 0.25752511147864554,
-    "ffmpeg_peak_mb": 246.484375,
-    "python_peak_mb": 49.078125,
-    "total_peak_mb": 295.5625,
+    "ffmpeg_cpu_s": 163.731316,
+    "ffmpeg_cpu_pct": 760.6531985407956,
+    "python_cpu_s": 0.6211610479999999,
+    "python_cpu_pct": 2.885753009950477,
+    "ffmpeg_peak_mb": 228.546875,
+    "python_peak_mb": 57.75,
+    "total_peak_mb": 286.296875,
     "frames": 960,
     "partial_bytes": 0,
-    "metric_compute_s": 0.0,
-    "pipe_wait_s": 25.785486991953803,
+    "metric_compute_s": 0.5652354180056136,
+    "pipe_wait_s": 20.948780845297733,
     "out_time_s": 240.0,
+    "hw_active": null,
+    "hw_format": null,
+    "hw_fallback_warning": false,
     "stderr_tail": []
   },
   "command": [
@@ -46,8 +50,6 @@
     "-progress",
     "pipe:2",
     "-y",
-    "-hwaccel",
-    "videotoolbox",
     "-i",
     "spikes/data/s3/h264_1080p25.mp4",
     "-filter_complex",
@@ -72,7 +74,7 @@
     "bt709",
     "-movflags",
     "+faststart",
-    "spikes/data/s3/runs/h264_1080p25-videotoolbox-drain-4/proxy.mp4",
+    "spikes/data/s3/runs/h264_1080p25-none-full-4-t0/proxy.mp4",
     "-map",
     "0:a:0",
     "-ac",
@@ -81,7 +83,7 @@
     "16000",
     "-c:a",
     "pcm_s16le",
-    "spikes/data/s3/runs/h264_1080p25-videotoolbox-drain-4/audio.wav",
+    "spikes/data/s3/runs/h264_1080p25-none-full-4-t0/audio.wav",
     "-map",
     "[m]",
     "-f",
@@ -103,19 +105,23 @@
     "proxy_rotation": false,
     "proxy_mb": 16.73,
     "proxy_short_side_540": true,
-    "proxy_sdr": true,
+    "proxy_tags_sdr": null,
     "proxy_aspect_ok": true,
     "marker_found": "top-left",
     "marker_expected": "top-left",
-    "marker_lead": 0.305,
+    "marker_lead": 0.25,
     "orientation_ok": true,
-    "proxy_mean_luma": 146.1,
+    "proxy_mean_luma": 141.9,
     "wav_rate": 16000,
     "wav_channels": 1,
     "wav_ok": true
   },
   "repeats_x_rt": [
-    9.3
+    11.15
+  ],
+  "x_rt_min_max": [
+    11.15,
+    11.15
   ],
   "machine": {
     "platform": "macOS-27.0.1-arm64-arm-64bit",
@@ -124,5 +130,5 @@
     "gpu": "Apple M1"
   },
   "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
-  "git_rev": "e3c1850-dirty"
+  "git_rev": "8307686-dirty"
 }

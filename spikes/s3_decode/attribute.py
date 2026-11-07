@@ -17,7 +17,7 @@ from typing import Any
 
 from spikes.common.media import tool
 from spikes.common.results import write_result
-from spikes.s3_decode.single_pass import proxy_size_filter, source_info
+from spikes.s3_decode.single_pass import probe_hwaccel, proxy_size_filter, source_info
 from spikes.s3_decode.stats import x_realtime
 
 
@@ -42,7 +42,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     info = source_info(args.src)
     sec = min(args.seconds, info.duration_s)
-    base = [tool("ffmpeg"), "-hide_banner", "-nostdin", "-loglevel", "error", "-y"]
+    hw_active: bool | None = None
+    if args.hwaccel:
+        hw_active, hw_format = probe_hwaccel(args.src, args.hwaccel)
+        print(f"hwaccel {args.hwaccel}: active={hw_active} format={hw_format}")
+    level = "warning" if args.hwaccel else "error"
+    base = [tool("ffmpeg"), "-hide_banner", "-nostdin", "-loglevel", level, "-y"]
     if args.hwaccel:
         base += ["-hwaccel", args.hwaccel]
     base += ["-t", f"{sec:g}", "-i", str(args.src)]
@@ -58,7 +63,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{k:24s} {v['x_rt']:6.1f}x  ({v['wall_s']} s)")
     tag = "win" if sys.platform == "win32" else sys.platform
     hw = args.hwaccel or "cpu"
-    write_result("s3", f"attrib-{tag}-{args.src.stem}-{hw}", {"seconds": sec, "runs": runs})
+    write_result(
+        "s3",
+        f"attrib-{tag}-{args.src.stem}-{hw}",
+        {"seconds": sec, "hw_active": hw_active, "runs": runs},
+    )
     return 0
 
 

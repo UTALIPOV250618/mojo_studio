@@ -104,3 +104,88 @@ def test_marker_quadrant_finds_bright_corner() -> None:
     f[:8, 5:] = 255
     name, lead = sources.marker_quadrant(f)
     assert name == "top-right" and lead > 0.3
+
+
+def test_classify_hwaccel_log() -> None:
+    ok = "x\n[hevc @ 0x1] Format videotoolbox_vld chosen by get_format().\n"
+    assert sp.classify_hwaccel_log(ok) == (True, "videotoolbox_vld")
+    assert sp.classify_hwaccel_log("[h264 @ 1] Format d3d11 chosen by get_format().")[0] is True
+    soft = "[h264 @ 1] Format yuv420p chosen by get_format()."
+    assert sp.classify_hwaccel_log(soft) == (False, "yuv420p")
+    bad = "[mpeg4 @ 1] Failed setup for format videotoolbox_vld: hwaccel initialisation returned error."
+    assert sp.classify_hwaccel_log(bad) == (False, None)
+    assert sp.classify_hwaccel_log("nothing here") == (False, None)
+    assert sp.HW_FALLBACK_RE.search("Failed setup for format d3d11: hwaccel initialisation")
+
+
+def test_hw_runs_log_warnings_and_threads_cap(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    info = _info(1920, 1080)
+    hw, _ = sp.build_command(tmp_path / "a.mp4", tmp_path, info, hwaccel="d3d11va", threads=4)
+    assert hw[hw.index("-loglevel") + 1] == "warning"
+    assert hw.count("-threads") == 2 and "-filter_threads" in hw
+    assert hw.index("-threads") < hw.index("-i")
+    sw, _ = sp.build_command(tmp_path / "a.mp4", tmp_path, info)
+    assert sw[sw.index("-loglevel") + 1] == "error" and "-threads" not in sw
+
+
+def _ramp(n: int = 400) -> np.ndarray:
+    return np.linspace(16, 235, n).astype(np.uint8)
+
+
+def test_analyze_ramp_accepts_clean_sdr_ramp() -> None:
+    res = sources.analyze_ramp(_ramp())
+    assert res["pass"] is True and res["monotonic_drops"] == 0
+
+
+def test_analyze_ramp_rejects_clipping_lifted_black_and_inversion() -> None:
+    clipped = np.minimum(_ramp(), 200).astype(np.uint8)
+    clipped = np.where(_ramp() > 200, 235, clipped).astype(np.uint8)
+    assert sources.analyze_ramp(clipped)["pass"] is False  # highlight plateau
+    lifted = np.linspace(80, 235, 400).astype(np.uint8)
+    assert sources.analyze_ramp(lifted)["pass"] is False  # washed-out blacks
+    assert sources.analyze_ramp(_ramp()[::-1].copy())["pass"] is False  # not monotonic
+
+
+def test_parse_only_never_needs_an_empty_argument() -> None:
+    from spikes.s3_decode import bench_decode as bd
+
+    assert bd.parse_only("all") == list(bd.SYNTH)
+    assert bd.parse_only("none") == []
+    assert bd.parse_only("h264_1080p25,hevc_4k_hlg_rot") == ["h264_1080p25", "hevc_4k_hlg_rot"]
+    with pytest.raises(SystemExit):
+        bd.parse_only("bogus")
+
+
+def test_read_real_list_utf8(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from spikes.s3_decode import bench_decode as bd
+
+    f = tmp_path / "real.txt"
+    f.write_text("# c\ncamera=D:\\Свадьба\\камера 1\\C0001.MP4\n\n", encoding="utf-8-sig")
+    assert bd.read_real_list(f) == ["camera=D:\\Свадьба\\камера 1\\C0001.MP4"]
+
+
+def _row(hw: str, x: float, cpu: float, active: bool | None, codec: str = "h264", h: int = 1080):  # type: ignore[no-untyped-def]
+    return {
+        "hwaccel": hw,
+        "info": {"codec": codec, "size_displayed": [1920, h]},
+        "stats": {
+            "x_rt": x, "python_cpu_pct": 2.0, "total_peak_mb": 300.0, "ffmpeg_cpu_pct": cpu,
+            "hw_active": active, "hw_format": "x", "hw_fallback_warning": active is False,
+        },
+    }  # fmt: skip
+
+
+def test_verdicts_hw_inactive_invalidates_threshold_and_gain() -> None:
+    from spikes.s3_decode import bench_decode as bd
+
+    cpu = _row("none", 11.0, 750, None)
+    fake_hw = _row("d3d11va", 11.2, 740, False)
+    v = bd.verdicts(fake_hw, None, cpu)
+    assert v["hw_verdict_valid"] is False and v["ge_12x"] is None and "hw_gain_x" not in v
+    assert v["hw_cpu_suspicious"] is True
+    real_hw = _row("d3d11va", 13.0, 300, True)
+    v2 = bd.verdicts(real_hw, None, cpu)
+    assert v2["hw_verdict_valid"] is True and v2["ge_12x"] is True and v2["hw_gain_x"] == 1.18
+    assert v2["hw_cpu_suspicious"] is False
+    v3 = bd.verdicts(_row("none", 2.8, 700, None, codec="hevc", h=3840), None, None)
+    assert v3["ge_12x"] is None  # threshold is defined for 1080p H.264 only

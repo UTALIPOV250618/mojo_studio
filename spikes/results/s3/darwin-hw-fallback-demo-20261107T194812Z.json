@@ -1,0 +1,33 @@
+{
+  "note": "videotoolbox requested; m4.mp4 is MPEG-4 part 2 (no VT decoder): rc=0 but software",
+  "runs": {
+    "h264_1080p25.mp4": {
+      "returncode": 0,
+      "hw_active": true,
+      "hw_format": "videotoolbox_vld",
+      "hw_fallback_warning": false,
+      "x_rt": 9.3,
+      "ffmpeg_cpu_pct": 243,
+      "stderr_tail": []
+    },
+    "m4.mp4": {
+      "returncode": 0,
+      "hw_active": false,
+      "hw_format": null,
+      "hw_fallback_warning": true,
+      "x_rt": 22.4,
+      "ffmpeg_cpu_pct": 428,
+      "stderr_tail": [
+        "[mpeg4 @ 0x7a93059180] Failed setup for format videotoolbox_vld: hwaccel initialisation returned error."
+      ]
+    }
+  },
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "8307686-dirty"
+}

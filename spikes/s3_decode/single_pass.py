@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -38,6 +39,18 @@ except ImportError:  # Windows
 PROGRESS_KEYS = {
     "frame", "fps", "bitrate", "total_size", "out_time_ms", "out_time",
     "dup_frames", "drop_frames", "speed", "progress",
+}  # fmt: skip
+# ffmpeg -loglevel warning lines that mean the requested hwaccel did NOT work.
+HW_FALLBACK_RE = re.compile(
+    r"Failed setup for format|hwaccel initialisation returned error|"
+    r"Unrecognized hwaccel|Hardware accelerated|Failed to (?:create|init)|"
+    r"No device available|Error creating a (?:D3D11|CUDA|VideoToolbox)",
+    re.IGNORECASE,
+)
+HW_FORMAT_RE = re.compile(r"Format (\S+) chosen by get_format")
+SOFTWARE_FORMATS = {
+    "yuv420p", "yuv420p10le", "yuvj420p", "yuv422p", "yuv422p10le", "yuv444p", "nv12",
+    "p010le", "yuv420p12le", "gray", "gbrp",
 }  # fmt: skip
 HDR_TRCS = {"arib-std-b67", "smpte2084"}
 PROXY_SHORT_SIDE = 540
@@ -158,15 +171,23 @@ def build_command(
     metric_fps: float = 4.0,
     tonemap: str = "zscale",
     preset: str = "veryfast",
+    threads: int = 0,
 ) -> tuple[list[str], str]:
+    """`threads` > 0 caps decoder, filter and x264 threads (stand-in for 'ASR takes the rest')."""
     graph, used = build_filter_graph(info, metrics=metrics, metric_fps=metric_fps, tonemap=tonemap)
     gop = round(float(eval_fraction(pick_cfr(info.avg_fps))))
-    cmd = [tool("ffmpeg"), "-hide_banner", "-nostdin", "-nostats", "-loglevel", "error"]
+    level = "warning" if hwaccel else "error"  # hwaccel fallback is only a warning
+    cmd = [tool("ffmpeg"), "-hide_banner", "-nostdin", "-nostats", "-loglevel", level]
     cmd += ["-progress", "pipe:2", "-y"]
     if hwaccel:
         cmd += ["-hwaccel", hwaccel]
+    if threads > 0:
+        cmd += ["-threads", str(threads), "-filter_threads", str(threads)]
+        cmd += ["-filter_complex_threads", str(threads)]
     cmd += ["-i", str(src), "-filter_complex", graph]
     cmd += ["-map", "[proxy]", "-c:v", "libx264", "-preset", preset, "-crf", "26"]
+    if threads > 0:
+        cmd += ["-threads", str(threads)]
     cmd += ["-g", str(gop), "-pix_fmt", "yuv420p", "-color_primaries", "bt709"]
     cmd += ["-color_trc", "bt709", "-colorspace", "bt709", "-movflags", "+faststart"]
     cmd += [str(out_dir / "proxy.mp4")]
@@ -186,6 +207,32 @@ def eval_fraction(text: str) -> float:
 def parse_progress_line(line: str) -> tuple[str, str] | None:
     key, sep, value = line.strip().partition("=")
     return (key, value) if sep and key and " " not in key else None
+
+
+def classify_hwaccel_log(text: str) -> tuple[bool, str | None]:
+    """(active, chosen pixel format) from an ffmpeg `-loglevel debug` log of a short decode.
+
+    Active = the decoder picked a hardware surface format (e.g. videotoolbox_vld, d3d11,
+    cuda) and no failure line was printed.
+    """
+    if HW_FALLBACK_RE.search(text):
+        return False, None
+    chosen = HW_FORMAT_RE.findall(text)
+    fmt = chosen[-1] if chosen else None
+    return (fmt is not None and fmt not in SOFTWARE_FORMATS), fmt
+
+
+def probe_hwaccel(src: Path, hwaccel: str, seconds: float = 1.0) -> tuple[bool, str | None]:
+    """Decode `seconds` with the hwaccel and report whether it really engaged."""
+    cmd = [tool("ffmpeg"), "-hide_banner", "-nostdin", "-loglevel", "debug"]
+    cmd += ["-hwaccel", hwaccel, "-t", f"{seconds:g}", "-i", str(src)]
+    cmd += ["-an", "-frames:v", "5", "-f", "null", "-"]
+    proc = subprocess.run(
+        cmd, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
+    if proc.returncode != 0:
+        return False, None
+    return classify_hwaccel_log(proc.stderr)
 
 
 @dataclass
@@ -208,6 +255,9 @@ class RunStats:
     metric_compute_s: float
     pipe_wait_s: float
     out_time_s: float
+    hw_active: bool | None = None  # None = software run
+    hw_format: str | None = None
+    hw_fallback_warning: bool = False
     stderr_tail: list[str] = field(default_factory=list)
 
 
@@ -221,6 +271,7 @@ def run_single_pass(
     tonemap: str = "auto",
     preset: str = "veryfast",
     chunk_frames: int = 64,
+    threads: int = 0,
 ) -> RunStats:
     """metrics: 'full' (read + compute), 'drain' (read, discard), 'none' (no pipe output)."""
     out_dir = Path(out_dir)
@@ -237,7 +288,12 @@ def run_single_pass(
         metric_fps=metric_fps,
         tonemap=tonemap,
         preset=preset,
+        threads=threads,
     )
+    hw_probe: tuple[bool, str | None] = (False, None)
+    if hwaccel:
+        hw_probe = probe_hwaccel(src, hwaccel)
+    fallback_seen = threading.Event()
     tail: deque[str] = deque(maxlen=30)
     progress = {"out_time_us": 0}
 
@@ -251,6 +307,8 @@ def run_single_pass(
                     pass
             elif kv is None or not (kv[0] in PROGRESS_KEYS or kv[0].startswith("stream_")):
                 tail.append(raw.rstrip())
+                if hwaccel and HW_FALLBACK_RE.search(raw):
+                    fallback_seen.set()
 
     r0 = resource.getrusage(resource.RUSAGE_CHILDREN) if resource is not None else None
     me = psutil.Process()
@@ -264,6 +322,7 @@ def run_single_pass(
         text=False,
         bufsize=0,
     )
+    assert proc.stdout is not None and proc.stderr is not None
     err_thread = threading.Thread(
         target=drain_stderr,
         args=(
@@ -272,40 +331,53 @@ def run_single_pass(
         daemon=True,
     )
     err_thread.start()
-    ff = psutil.Process(proc.pid)
-    sampler = ResourceSampler({"ffmpeg": ff, "python": me})
-    sampler.start()
-    ff_cpu = 0.0
     sample_stop = threading.Event()
-
-    def watch_cpu() -> None:
-        nonlocal ff_cpu
-        while not sample_stop.is_set():
-            try:
-                t = ff.cpu_times()
-                ff_cpu = t.user + t.system
-            except psutil.Error:
-                return
-            sample_stop.wait(0.2)
-
-    cpu_thread = threading.Thread(target=watch_cpu, daemon=True)
-    cpu_thread.start()
-
+    ff_cpu = 0.0
     acc = MetricsAccumulator(fps=metric_fps)
     reader: FrameReader | None = None
-    assert proc.stdout is not None
-    if metrics != "none":
-        mw, mh = metric_size(info.width, info.height)
-        reader = FrameReader(proc.stdout, mw, mh, chunk_frames)
-        for chunk in reader.chunks():
-            if metrics == "full":
-                acc.update(chunk)
-    rc = proc.wait()
+    sampler: ResourceSampler | None = None
+    cpu_thread: threading.Thread | None = None
+    try:
+        try:
+            ff = psutil.Process(proc.pid)
+        except psutil.NoSuchProcess:  # ffmpeg died at once (bad args): rc + stderr tell why
+            ff = None
+        procs = {"python": me}
+        if ff is not None:
+            procs["ffmpeg"] = ff
+        sampler = ResourceSampler(procs)
+        sampler.start()
+
+        def watch_cpu() -> None:
+            nonlocal ff_cpu
+            while ff is not None and not sample_stop.is_set():
+                try:
+                    t = ff.cpu_times()
+                    ff_cpu = t.user + t.system
+                except psutil.Error:
+                    return
+                sample_stop.wait(0.2)
+
+        cpu_thread = threading.Thread(target=watch_cpu, daemon=True)
+        cpu_thread.start()
+        if metrics != "none":
+            mw, mh = metric_size(info.width, info.height)
+            reader = FrameReader(proc.stdout, mw, mh, chunk_frames)
+            for chunk in reader.chunks():
+                if metrics == "full":
+                    acc.update(chunk)
+        rc = proc.wait()
+    finally:
+        if proc.poll() is None:  # reader/metrics raised: never leave ffmpeg running
+            proc.kill()
+            proc.wait()
+        sample_stop.set()
+        if sampler is not None:
+            sampler.stop()
     wall = time.perf_counter() - t0
-    sample_stop.set()
-    sampler.stop()
     err_thread.join(timeout=2)
-    cpu_thread.join(timeout=1)
+    if cpu_thread is not None:
+        cpu_thread.join(timeout=1)
     cpu1 = me.cpu_times()
     py_cpu = (cpu1.user + cpu1.system) - (cpu0.user + cpu0.system)
     if resource is not None:  # exact CPU of the reaped child (POSIX); Windows keeps sampling
@@ -335,6 +407,9 @@ def run_single_pass(
         metric_compute_s=acc.compute_s,
         pipe_wait_s=reader.read_wait_s if reader else 0.0,
         out_time_s=progress["out_time_us"] / 1e6,
+        hw_active=(hw_probe[0] and not fallback_seen.is_set()) if hwaccel else None,
+        hw_format=hw_probe[1],
+        hw_fallback_warning=fallback_seen.is_set(),
         stderr_tail=list(tail),
     )
 
@@ -348,6 +423,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--metric-fps", type=float, default=4.0)
     ap.add_argument("--tonemap", choices=("auto", "zscale", "fallback", "none"), default="auto")
     ap.add_argument("--preset", default="veryfast")
+    ap.add_argument("--threads", type=int, default=0, help="cap ffmpeg threads (0 = no cap)")
     args = ap.parse_args(argv)
     stats = run_single_pass(
         args.src,
@@ -357,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
         metric_fps=args.metric_fps,
         tonemap=args.tonemap,
         preset=args.preset,
+        threads=args.threads,
     )
     d = asdict(stats)
     d.pop("command")

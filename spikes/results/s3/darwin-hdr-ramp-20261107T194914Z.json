@@ -1,0 +1,23 @@
+{
+  "hdr_ramp": {
+    "zscale": "unavailable in this ffmpeg",
+    "fallback": {
+      "p1": 18.0,
+      "p50": 125.0,
+      "p99": 232.0,
+      "clipped_frac": 0.004166666666666667,
+      "black_level": 18.105262756347656,
+      "monotonic_drops": 0.0,
+      "highlight_separation": 21.923080444335938,
+      "pass": true
+    }
+  },
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "8307686-dirty"
+}
