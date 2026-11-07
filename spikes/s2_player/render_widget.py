@@ -1,0 +1,291 @@
+"""S2: libmpv embedded through the render API (MpvRenderContext + QOpenGLWidget).
+
+    python -m spikes.s2_player.render_widget --work DIR [--segments 200] [--seed 2]
+
+Works on every OS (the only way that is reliable on macOS). mpv runs with
+vo=libmpv and draws into the widget's FBO from paintGL; mpv's update callback comes
+from an mpv thread, so it only emits a Qt signal and the repaint happens on the GUI
+thread. Buttons: play/pause, seek (random frame), step, back step, rebuild EDL.
+"""
+
+from __future__ import annotations
+
+import argparse
+import bisect
+import ctypes
+import random
+import sys
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+import mpv  # type: ignore[import-untyped]
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QOpenGLContext, QSurfaceFormat
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+# Options shared by both embeddings (docs/architecture.md §8).
+BASE_OPTS: dict[str, Any] = {
+    "hwdec": "auto-safe",
+    "keep_open": "yes",
+    "hr_seek": "yes",
+    "pause": True,
+    "input_default_bindings": False,
+    "input_vo_keyboard": False,
+    "osc": False,
+}
+
+
+def configure_gl() -> None:
+    """Call before QApplication. macOS hands out a GL 2.1 legacy context by default:
+    mpv then disables its good scalers ("GLSL version too old") and videotoolbox
+    interop ("need >= OpenGL 3.0"), so decoding falls back to software + upload.
+    A 4.1 core profile fixes both. Windows/Linux default contexts are already
+    compatibility contexts of the highest version, so they are left alone."""
+    if sys.platform == "darwin":
+        fmt = QSurfaceFormat()
+        fmt.setVersion(4, 1)
+        fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+        fmt.setSwapInterval(1)
+        QSurfaceFormat.setDefaultFormat(fmt)
+
+
+_NAP_TOKEN: int | None = None
+
+
+def disable_app_nap(reason: str = "video playback") -> bool:
+    """macOS: hold an NSProcessInfo activity (user-initiated + latency-critical).
+
+    Without it a process that is not frontmost (a benchmark started from a
+    terminal) is App-Napped after ~20 s: paints come every ~100 ms and mpv drops a
+    third of the frames. The product needs the same while playing. No-op elsewhere.
+    """
+    global _NAP_TOKEN
+    if sys.platform != "darwin" or _NAP_TOKEN:
+        return bool(_NAP_TOKEN)
+    import ctypes.util
+
+    objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc") or "libobjc.dylib")
+    ctypes.cdll.LoadLibrary("/System/Library/Frameworks/Foundation.framework/Foundation")
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.sel_registerName.restype = ctypes.c_void_p
+    send = objc.objc_msgSend
+
+    def msg(obj: Any, sel: bytes, *args: Any, argtypes: tuple = ()) -> Any:
+        send.restype = ctypes.c_void_p
+        send.argtypes = [ctypes.c_void_p, ctypes.c_void_p, *argtypes]
+        return send(obj, objc.sel_registerName(sel), *args)
+
+    text = msg(
+        objc.objc_getClass(b"NSString"),
+        b"stringWithUTF8String:",
+        reason.encode(),
+        argtypes=(ctypes.c_char_p,),
+    )
+    info = msg(objc.objc_getClass(b"NSProcessInfo"), b"processInfo")
+    user_initiated, latency_critical = 0x00FFFFFF, 0xFF00000000
+    token = msg(
+        info,
+        b"beginActivityWithOptions:reason:",
+        ctypes.c_uint64(user_initiated | latency_critical),
+        text,
+        argtypes=(ctypes.c_uint64, ctypes.c_void_p),
+    )
+    if token:
+        msg(token, b"retain")
+    _NAP_TOKEN = token
+    return bool(token)
+
+
+class MpvRenderWidget(QOpenGLWidget):
+    """mpv drawn by the render API into this widget's FBO."""
+
+    _mpv_update = Signal()
+
+    def __init__(
+        self, parent: QWidget | None = None, *, block_for_target_time: bool = True, **mpv_opts: Any
+    ) -> None:
+        super().__init__(parent)
+        opts = {**BASE_OPTS, **mpv_opts}
+        self.block = block_for_target_time
+        self.mpv = mpv.MPV(vo="libmpv", **opts)
+        self.ctx: mpv.MpvRenderContext | None = None
+        self._proc_fn = mpv.MpvGlGetProcAddressFn(self._get_proc_address)
+        self._mpv_update.connect(self.update, Qt.ConnectionType.QueuedConnection)
+        self.frameSwapped.connect(self._swapped)
+        # Paint bookkeeping for the bench (read from other threads).
+        self.paint_cv = threading.Condition()
+        self.paints = 0
+        self.last_paint_t = 0.0
+        self.render_ms: list[float] = []
+        self.paint_times: list[float] = []
+        self._gl_lib: ctypes.CDLL | None = None
+
+    # GL entry points for mpv. Qt's getProcAddress is the portable way; on macOS
+    # core GL functions are plain symbols of the OpenGL framework, so fall back to
+    # dlsym there.
+    def _get_proc_address(self, _ctx: Any, name: bytes) -> int:
+        glctx = QOpenGLContext.currentContext()
+        addr = 0
+        if glctx is not None:
+            try:
+                addr = int(glctx.getProcAddress(name) or 0)
+            except Exception:  # noqa: BLE001 - fall through to dlsym
+                addr = 0
+        if not addr and sys.platform == "darwin":
+            if self._gl_lib is None:
+                self._gl_lib = ctypes.CDLL("/System/Library/Frameworks/OpenGL.framework/OpenGL")
+            try:
+                addr = ctypes.cast(getattr(self._gl_lib, name.decode()), ctypes.c_void_p).value or 0
+            except AttributeError:
+                addr = 0
+        return addr
+
+    def initializeGL(self) -> None:
+        self.ctx = mpv.MpvRenderContext(
+            self.mpv, "opengl", opengl_init_params={"get_proc_address": self._proc_fn}
+        )
+        self.ctx.update_cb = self._mpv_update.emit
+
+    def paintGL(self) -> None:
+        if self.ctx is None:
+            return
+        ratio = self.devicePixelRatioF()
+        w, h = round(self.width() * ratio), round(self.height() * ratio)
+        t0 = time.perf_counter()
+        self.ctx.render(
+            flip_y=True,
+            opengl_fbo={"w": w, "h": h, "fbo": self.defaultFramebufferObject()},
+            block_for_target_time=self.block,
+        )
+        t1 = time.perf_counter()
+        with self.paint_cv:
+            self.paints += 1
+            self.last_paint_t = t1
+            if len(self.render_ms) < 100_000:
+                self.render_ms.append((t1 - t0) * 1000)
+                self.paint_times.append(t1)
+            self.paint_cv.notify_all()
+
+    def _swapped(self) -> None:
+        if self.ctx is not None:
+            self.ctx.report_swap()
+
+    def wait_paint_after(self, t: float, timeout: float = 2.0) -> float | None:
+        """perf_counter time of the first paint that finished after t, or None."""
+        deadline = time.perf_counter() + timeout
+        with self.paint_cv:
+            while self.last_paint_t <= t:
+                left = deadline - time.perf_counter()
+                if left <= 0:
+                    return None
+                self.paint_cv.wait(left)
+            return self.last_paint_t
+
+    def first_paint_after(self, t: float, timeout: float = 2.0) -> float | None:
+        """perf_counter time of the earliest paint that finished after t, or None."""
+        if self.wait_paint_after(t, timeout) is None:
+            return None
+        with self.paint_cv:
+            i = bisect.bisect_right(self.paint_times, t)
+            return self.paint_times[i] if i < len(self.paint_times) else self.last_paint_t
+
+    def shutdown(self) -> None:
+        if self.ctx is not None:
+            self.makeCurrent()
+            self.ctx.free()
+            self.ctx = None
+            self.doneCurrent()
+        self.mpv.terminate()
+
+
+class PlayerWindow(QWidget):
+    """Video widget + the four controls from the brief."""
+
+    def __init__(self, video: QWidget, rebuild: Any = None) -> None:
+        super().__init__()
+        self.video = video
+        self.m: mpv.MPV = video.mpv  # type: ignore[attr-defined]
+        self._rebuild = rebuild
+        self._rng = random.Random(0)
+        self.setWindowTitle("S2 player")
+        self.status = QLabel("")
+        buttons = QHBoxLayout()
+        for text, fn in (
+            ("Пуск/пауза", self.toggle),
+            ("Перемотка", self.seek_random),
+            ("Шаг", lambda: self.m.command("frame-step")),
+            ("Шаг назад", lambda: self.m.command("frame-back-step")),
+            ("Пересобрать EDL", self.rebuild),
+        ):
+            b = QPushButton(text)
+            b.clicked.connect(fn)
+            buttons.addWidget(b)
+        lay = QVBoxLayout(self)
+        lay.addWidget(video, 1)
+        lay.addLayout(buttons)
+        lay.addWidget(self.status)
+
+    def toggle(self) -> None:
+        self.m.pause = not self.m.pause
+
+    def seek_random(self) -> None:
+        dur = self.m.duration or 0
+        self.m.command("seek", f"{self._rng.uniform(0, dur):.6f}", "absolute+exact")
+
+    def rebuild(self) -> None:
+        if self._rebuild is None:
+            return
+        pos = self.m.time_pos or 0
+        url = self._rebuild()
+        self.m.loadfile(url, "replace", start=f"{pos:.6f}")
+        self.status.setText(f"EDL пересобран, позиция {pos:.3f} с")
+
+
+def demo_edl(work: Path, n: int, seed: int) -> tuple[str, Any]:
+    from spikes.s2_player.prepare import load_sources, prepare
+    from spikes.s2_player.timeline import edit_segment, edl_url, make_segments
+
+    paths = prepare(work)
+    sources = load_sources(paths["proxy"])
+    segments = make_segments(sources, n, seed=seed)
+    rng = random.Random(seed)
+
+    def rebuild() -> str:
+        k = rng.randrange(len(segments))
+        segments[:] = edit_segment(segments, sources, k, 25)
+        return edl_url(segments, sources)
+
+    return edl_url(segments, sources), rebuild
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    ap.add_argument("--work", type=Path, default=Path("spikes/data/s2/Той Студия"))
+    ap.add_argument("--segments", type=int, default=200)
+    ap.add_argument("--seed", type=int, default=2)
+    args = ap.parse_args(argv)
+    url, rebuild = demo_edl(args.work, args.segments, args.seed)
+    configure_gl()
+    disable_app_nap()
+    app = QApplication(sys.argv[:1])
+    video = MpvRenderWidget()
+    win = PlayerWindow(video, rebuild)
+    win.resize(980, 640)
+    win.show()
+    video.mpv.loadfile(url)
+    app.aboutToQuit.connect(video.shutdown)
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

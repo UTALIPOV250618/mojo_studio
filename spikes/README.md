@@ -43,7 +43,7 @@ python -c "from pathlib import Path; from spikes.common.media import generate_se
 
 | Спайк | Команда |
 | --- | --- |
-| S2 плеер | _TODO (Task 2)_ |
+| S2 плеер | `python -m spikes.s2_player.bench_player --mode render` (Windows ещё `--mode wid`; подробно: `docs/spikes/S2-player.md`) |
 | S5 экспорт | `python -m spikes.s5_export.run_bench --work "spikes/data/s5/Той Студия"` (подробно: `docs/spikes/S5-export.md`) |
 | S3 анализ | _TODO (Task 4)_ |
 | S1 речь | _TODO (Task 5)_ |
