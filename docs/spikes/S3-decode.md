@@ -77,7 +77,7 @@
 
 ## Как запустить на Windows-ПК (эталонный ноутбук)
 
-Ryzen 5 5600H, GTX 1650, ~6 ГБ ОЗУ, ffmpeg 9.0.2 gyan full, репозиторий `C:\Users\oshis\mojo_studio`. Все команды работают и в `cmd`, и в Windows PowerShell 5.1 (через SSH он включён по умолчанию): пустых аргументов нет, `--only` принимает `all`/`none`/список.
+Ryzen 5 5600H, GTX 1650, ~6 ГБ ОЗУ, ffmpeg 9.0.2 gyan full, репозиторий `C:\Users\oshis\mojo_studio`. Все команды работают и в `cmd`, и в Windows PowerShell 5.1 (через SSH он включён по умолчанию): пустых аргументов нет, `--only` принимает `all`/`none`/список. Списки через запятую всегда в кавычках (`"none,d3d11va"`): без кавычек PowerShell делит их на отдельные аргументы.
 
 ```
 cd C:\Users\oshis\mojo_studio
@@ -94,7 +94,7 @@ ffmpeg -hide_banner -filters | findstr zscale
 Основной прогон (CPU и `d3d11va`, режимы `full` и `none`, повторы по кругу — для ноутбука `--repeat 3`; ~25–40 мин). На ноутбуке с ~1,5 ГБ свободной ОЗУ закройте браузер и прочее. **Если брали короткие версии, во всех командах ниже укажите те же `--dur-1080/--dur-xavc/--dur-4k`**, иначе файлы пересоздадутся:
 
 ```
-.venv\Scripts\python -m spikes.s3_decode.bench_decode --hwaccels none,d3d11va --modes full,none --repeat 3
+.venv\Scripts\python -m spikes.s3_decode.bench_decode --hwaccels "none,d3d11va" --modes "full,none" --repeat 3
 ```
 
 Реальные файлы: положите в UTF-8-файл `real.txt` строки `метка=путь` (метки латиницей; пути с кириллицей лучше писать в файл, а не в командную строку — кодовая страница консоли по SSH портит буквы), например:
@@ -104,8 +104,10 @@ camera=D:\Свадьба\камера 1\C0001.MP4
 iphone=D:\Свадьба\телефон\IMG_0001.MOV
 ```
 
+Сохранять именно в UTF-8: перенаправление `>` в PowerShell 5.1 пишет UTF-16. Надёжно — Блокнот («Сохранить как» → UTF-8) или `Set-Content real.txt -Encoding utf8 -Value '...'`.
+
 ```
-.venv\Scripts\python -m spikes.s3_decode.bench_decode --only none --real-file real.txt --hwaccels none,d3d11va --repeat 3
+.venv\Scripts\python -m spikes.s3_decode.bench_decode --only none --real-file real.txt --hwaccels "none,d3d11va" --repeat 3
 ```
 
 Разбор по этапам, одиночный проход и «часть ядер занята» (грубая замена параллельному ASR; настоящую проверку делать с нагрузкой S1):
@@ -120,6 +122,6 @@ iphone=D:\Свадьба\телефон\IMG_0001.MOV
 Сначала запускать без GPU и с GPU на одном и том же ПК, затем (если есть) на машине без дискретной карты. Коммитить только `spikes/results/s3/*.json` и `spikes/results/s3/frames/*.jpg`, не `spikes/data/`. Что смотреть:
 
 - `x_rt` в `summary-win-*.json` против 12 / 15 **с учётом `bit_rate_mbps` файла**; `tonemap` должен быть `zscale`.
-- `hw_active` у строк `d3d11va` обязан быть `true` (иначе вердикт по GPU недействителен: драйвер, iGPU вместо GTX 1650, профиль HEVC 10 бит); `hw_cpu_suspicious` = `true` тоже означает, что аппаратное декодирование, вероятно, не работает. `d3d11va` на H.264 может оказаться медленнее CPU, как videotoolbox на Mac.
+- `hw_active` у строк `d3d11va` обязан быть `true` (иначе вердикт по GPU недействителен: драйвер или профиль HEVC 10 бит). Какая видеокарта декодировала — встроенная AMD или GTX 1650, — `hw_active` не показывает: это видно только в Диспетчере задач (вкладка «Производительность» → «Видеодекодирование») во время прогона; `hw_cpu_suspicious` = `true` тоже означает, что аппаратное декодирование, вероятно, не работает. `d3d11va` на H.264 может оказаться медленнее CPU, как videotoolbox на Mac.
 - `hdr_ramp` в сводке: путь `zscale` должен пройти (`pass: true`) — это проверка «не сломано», не точности.
 - `orientation_ok` = `true` для синтетического 4K; для реального файла телефона — глазами по `frames/*.jpg` (ориентация и тонемаппинг), `proxy_tags_sdr` одним только тегам доверять нельзя.
