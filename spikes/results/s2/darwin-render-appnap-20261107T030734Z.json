@@ -15065,7 +15065,8 @@
       "v sub/ass: Using font provider coretext",
       "info sub/ass: fontselect: Using default font family: (Inter, 400, 0) -> /System/Library/Fonts/Helvetica.ttc, -1, Helvetica",
       "v sub/ass: fontselect: (Inter, 400, 0) -> /System/Library/Fonts/Helvetica.ttc, -1, Helvetica"
-    ]
+    ],
+    "png_note": "PNG at this path was overwritten by the later run darwin-render-20261107T034439Z (same ASS, same font fallback)"
   },
   "playback_after": {
     "played_s": 60.147,

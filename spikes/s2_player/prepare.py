@@ -56,6 +56,37 @@ def make_proxy(src: Path, dst: Path, gop_s: float = 1.0) -> Path:
     return dst
 
 
+TONE_HZ = {"clip_25": 310.0, "clip_29.97": 470.0, "clip_50": 690.0}
+TONE_GAIN = 0.3
+
+
+def make_tone_proxies(proxy_dir: Path) -> Path:
+    """Copies of the proxies whose audio never goes silent: the original clip audio
+    (beeps) plus a steady per-source tone. Video is copied, audio re-encoded with
+    the same AAC settings. Cuts then land mid-waveform, so a gap, overlap or
+    decoder warm-up at an EDL seam is visible in the audio (S2 seam-audio check)."""
+    dst_dir = proxy_dir.parent / f"{proxy_dir.name}-tone"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for stem in SOURCES.values():
+        dst = dst_dir / f"{stem}.mp4"
+        if dst.exists():
+            continue
+        tone = f"sine=frequency={TONE_HZ[stem]}:sample_rate={SAMPLE_RATE}:duration=61"
+        mix = (
+            f"[1:a]volume={TONE_GAIN},aformat=channel_layouts=stereo[t];"
+            "[0:a][t]amix=inputs=2:normalize=0:duration=first[a]"
+        )
+        run_ffmpeg(
+            [
+                "-i", str(proxy_dir / f"{stem}.mp4"), "-f", "lavfi", "-i", tone,
+                "-filter_complex", mix, "-map", "0:v", "-map", "[a]", "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "128k", "-ar", str(SAMPLE_RATE), "-ac", "2",
+                "-movflags", "+faststart", str(dst),
+            ]
+        )  # fmt: skip
+    return dst_dir
+
+
 def load_sources(proxy_dir: Path) -> dict[str, Source]:
     out = {}
     for name, stem in SOURCES.items():

@@ -32,6 +32,11 @@ EVENT_FIRST_US = 1_000_000  # spikes.common.media: flash + beep at 1.0 s + k * 2
 EVENT_EVERY_US = 2_000_000
 CUT_MARGIN_US = 60_000  # no cut within 60 ms of a flash/beep (a beep lasts 20 ms)
 EOF_MARGIN_S = 1
+# Seam audio: peak |played - ideal hard cut| allowed around a seam. For scale: the
+# tones are 0.3 full scale at 310-690 Hz, so the cut misplaced by ONE sample gives
+# ~0.027 and a 1 ms gap ~0.3; AAC re-decoding noise mid-segment is ~4e-5.
+SEAM_AUDIO_MAX = 0.01
+PAINTED_MAD_MAX = 2.5  # painted (GPU-scaled, read back) vs reference frame
 CUT_LEAD_US = 100  # EDL segment start this much before the first frame (see seg_times)
 
 
@@ -188,6 +193,33 @@ def edit_segment(
     return out
 
 
+def edit_length(
+    segments: list[Segment], sources: dict[str, Source], index: int, delta_frames: int
+) -> list[Segment]:
+    """Copy of the EDL with segment `index` made delta_frames longer (at its tail if
+    the source allows, else at its head)."""
+    out = list(segments)
+    seg = out[index]
+    src = sources[seg.src]
+    if seg.in_frame + seg.frames + delta_frames <= src.frames - 1:
+        out[index] = Segment(seg.src, seg.in_frame, seg.frames + delta_frames)
+    else:
+        out[index] = Segment(seg.src, seg.in_frame - delta_frames, seg.frames + delta_frames)
+    return out
+
+
+def map_position(old: list[OutFrame], new: list[OutFrame], pos_us: float) -> float:
+    """Playhead after an edit: the new time of the same (segment, source frame) that
+    was shown at pos_us; unchanged if that frame is no longer in the timeline."""
+    times = [f.t_us for f in old]
+    i = max(0, bisect.bisect_right(times, pos_us + 1000) - 1)
+    key = (old[i].seg, old[i].src, old[i].frame)
+    for f in new:
+        if (f.seg, f.src, f.frame) == key:
+            return f.t_us + (pos_us - old[i].t_us)
+    return pos_us
+
+
 # ---------------------------------------------------------------- flash / beep
 
 
@@ -303,49 +335,76 @@ def bgr0_from_raw(data: bytes, w: int, h: int, stride: int) -> np.ndarray:
     return arr[:, : w * 4].reshape(h, w, 4)
 
 
-def seam_clicks(
-    samples: np.ndarray,
+def seam_residuals(
+    out: np.ndarray,
+    src_audio: dict[str, np.ndarray],
+    segments: list[Segment],
+    sources: dict[str, Source],
     sample_rate: int,
-    seams_us: list[int],
-    beeps_us: list[int],
-    window_us: int = 5_000,
+    half_us: int = 10_000,
+    max_lag: int = 48,
 ) -> dict[str, Any]:
-    """Click check on mono float samples: peak |second difference| in a window around
-    every seam vs the peak elsewhere (beep windows excluded from both). A step or gap
-    at a seam shows up as a large second difference; a sine music bed barely moves it.
+    """Audio at every seam vs the ideal hard cut built from the sources.
+
+    For seam k the ideal is the last `half` samples of segment k-1 followed by the
+    first `half` samples of segment k, both taken from the continuously decoded
+    source audio at the EDL's own start/length. The residual |out - ideal| (best
+    of +-max_lag samples of alignment) catches gaps, overlaps, misplaced cuts and
+    decoder warm-up garbage. The same is done mid-segment (no cut) as a baseline,
+    so both columns go through the identical alignment and comparison. A best lag
+    on the edge of the search (+-1 ms) means the cut is misplaced: counted as bad.
     """
-    x = np.asarray(samples, dtype=np.float64)
-    d2 = np.abs(np.diff(x, 2)) if len(x) > 2 else np.zeros(0)
-    if len(d2) == 0:
-        return {"n_seams": 0}
+    n = round(half_us * sample_rate / US)
+    starts = seg_out_starts(segments, sources)
 
-    def idx(t_us: int) -> int:
-        return max(0, min(len(d2), round(t_us * sample_rate / US)))
+    def idx(t_us: float) -> int:
+        return round(t_us * sample_rate / US)
 
-    beep_mask = np.zeros(len(d2), dtype=bool)
-    for b in beeps_us:
-        beep_mask[idx(b - 10_000) : idx(b + 40_000)] = True
-    seam_mask = np.zeros(len(d2), dtype=bool)
-    per_seam = []
-    for s in seams_us:
-        lo, hi = idx(s - window_us), idx(s + window_us)
-        seam_mask[lo:hi] = True
-        win = d2[lo:hi][~beep_mask[lo:hi]]
-        per_seam.append(float(win.max()) if len(win) else 0.0)
-    rest = d2[~seam_mask & ~beep_mask]
-    rest_peak = float(rest.max()) if len(rest) else 0.0
-    rest_p999 = float(np.quantile(rest, 0.999)) if len(rest) else 0.0
-    seam_peak = max(per_seam) if per_seam else 0.0
+    def residual(ideal: np.ndarray, at: int) -> tuple[float, int]:
+        best = (math.inf, 0)
+        for lag in range(-max_lag, max_lag + 1):
+            lo = at - n + lag
+            if lo < 0 or lo + 2 * n > len(out):
+                continue
+            peak = float(np.abs(out[lo : lo + 2 * n] - ideal).max())
+            best = min(best, (peak, lag))
+        return best
+
+    seams, base = [], []
+    for k, seg in enumerate(segments):
+        start, length = seg_times(seg, sources)
+        a = src_audio[seg.src]
+        s0, s1 = idx(start), idx(start + length)
+        if s1 - s0 > 2 * n:  # baseline: middle of the segment, no cut
+            mid = (s0 + s1) // 2
+            peak, lag = residual(a[mid - n : mid + n], idx(starts[k]) + (mid - s0))
+            base.append({"seg": k, "peak": peak, "lag": lag})
+        if k == 0:
+            continue
+        prev = segments[k - 1]
+        p_start, p_len = seg_times(prev, sources)
+        pa = src_audio[prev.src]
+        p_end = idx(p_start + p_len)
+        ideal = np.concatenate([pa[p_end - n : p_end], a[s0 : s0 + n]])
+        if len(ideal) != 2 * n:
+            continue
+        peak, lag = residual(ideal, idx(starts[k]))
+        jump = float(abs(a[s0] - pa[p_end - 1]))  # the cut's own waveform step
+        seams.append({"seam": k, "peak": peak, "lag": lag, "cut_step": jump})
+    base_peaks = [b["peak"] for b in base]
+    seam_peaks = [s["peak"] for s in seams]
+    limit = SEAM_AUDIO_MAX
     return {
-        "n_seams": len(seams_us),
-        "seam_peak_d2": seam_peak,
-        "rest_peak_d2": rest_peak,
-        "rest_p999_d2": rest_p999,
-        "seams_above_rest_peak": sum(1 for p in per_seam if p > rest_peak),
-        "worst_seams": sorted(
-            ({"i": i, "t_us": seams_us[i], "d2": p} for i, p in enumerate(per_seam)),
-            key=lambda r: -r["d2"],
-        )[:5],
+        "n_seams": len(seams),
+        "n_baseline": len(base),
+        "baseline_peak": summary_ms(base_peaks, 5),
+        "seam_peak": summary_ms(seam_peaks, 5),
+        "cut_step": summary_ms([s["cut_step"] for s in seams], 4),
+        "limit": limit,
+        "seams_above_limit": sum(1 for p in seam_peaks if p > limit),
+        "lag_at_search_edge": sum(1 for r in seams + base if abs(r["lag"]) >= max_lag),
+        "lags": sorted({s["lag"] for s in seams} | {b["lag"] for b in base}),
+        "worst_seams": sorted(seams, key=lambda r: -r["peak"])[:5],
     }
 
 
@@ -363,16 +422,16 @@ def percentile(values: list[float], q: float) -> float:
     return s[lo] + (s[hi] - s[lo]) * (pos - lo)
 
 
-def summary_ms(values: list[float]) -> dict[str, Any]:
+def summary_ms(values: list[float], digits: int = 2) -> dict[str, Any]:
     if not values:
         return {"n": 0}
     return {
         "n": len(values),
-        "min": round(min(values), 2),
-        "p50": round(percentile(values, 50), 2),
-        "p95": round(percentile(values, 95), 2),
-        "max": round(max(values), 2),
-        "mean": round(sum(values) / len(values), 2),
+        "min": round(min(values), digits),
+        "p50": round(percentile(values, 50), digits),
+        "p95": round(percentile(values, 95), digits),
+        "max": round(max(values), digits),
+        "mean": round(sum(values) / len(values), digits),
     }
 
 
@@ -382,3 +441,44 @@ def verdict(value: float | None, threshold: float, *, unit: str, ok: bool | None
         return {"value": None, "threshold": threshold, "unit": unit, "pass": None}
     passed = value <= threshold if ok is None else ok
     return {"value": value, "threshold": threshold, "unit": unit, "pass": bool(passed)}
+
+
+# ---------------------------------------------------------------- painted frames
+
+
+def video_rect(osd: dict[str, Any], fbo_w: int, fbo_h: int) -> tuple[int, int, int, int]:
+    """(x, y, w, h) of the video inside the FBO from mpv's `osd-dimensions`
+    (margins in OSD pixels, OSD size = FBO size for the render API)."""
+    sx = fbo_w / osd["w"] if osd.get("w") else 1.0
+    sy = fbo_h / osd["h"] if osd.get("h") else 1.0
+    x0, x1 = round(osd["ml"] * sx), fbo_w - round(osd["mr"] * sx)
+    y0, y1 = round(osd["mt"] * sy), fbo_h - round(osd["mb"] * sy)
+    return x0, y0, x1 - x0, y1 - y0
+
+
+def resample_area(img: np.ndarray, w: int, h: int) -> np.ndarray:
+    """Box-filter img (HxWxC) to h x w: each output pixel is the mean of the input
+    pixels whose centres fall in its cell. Exact for integer factors."""
+    src_h, src_w = img.shape[:2]
+    if src_h % h == 0 and src_w % w == 0:
+        fy, fx = src_h // h, src_w // w
+        return img.reshape(h, fy, w, fx, -1).mean(axis=(1, 3), dtype=np.float64)
+    ys = np.floor((np.arange(src_h) + 0.5) * h / src_h).astype(np.int64)
+    xs = np.floor((np.arange(src_w) + 0.5) * w / src_w).astype(np.int64)
+    acc = np.zeros((h, w, img.shape[2]), dtype=np.float64)
+    cnt = np.zeros((h, w, 1), dtype=np.float64)
+    np.add.at(acc, (ys[:, None], xs[None, :]), img.astype(np.float64))
+    np.add.at(cnt, (ys[:, None], xs[None, :]), 1.0)
+    return acc / np.maximum(cnt, 1.0)
+
+
+def painted_small(rgba: np.ndarray, rect: tuple[int, int, int, int], w: int, h: int) -> np.ndarray:
+    """The painted video rect of an RGBA FBO read-back, box-filtered to w x h RGB."""
+    x, y, rw, rh = rect
+    return resample_area(rgba[y : y + rh, x : x + rw, :3], w, h)
+
+
+def small_mad(small_rgb: np.ndarray, ref_bgr0: np.ndarray) -> float:
+    """Mean abs diff between painted_small() output and an ffmpeg bgr0 reference."""
+    ref_rgb = ref_bgr0[..., 2::-1].astype(np.float64)
+    return float(np.abs(small_rgb - ref_rgb).mean())

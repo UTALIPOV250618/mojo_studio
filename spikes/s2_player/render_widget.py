@@ -112,7 +112,7 @@ class MpvRenderWidget(QOpenGLWidget):
     _mpv_update = Signal()
 
     def __init__(
-        self, parent: QWidget | None = None, *, block_for_target_time: bool = True, **mpv_opts: Any
+        self, parent: QWidget | None = None, *, block_for_target_time: bool = False, **mpv_opts: Any
     ) -> None:
         super().__init__(parent)
         opts = {**BASE_OPTS, **mpv_opts}
@@ -128,6 +128,12 @@ class MpvRenderWidget(QOpenGLWidget):
         self.last_paint_t = 0.0
         self.render_ms: list[float] = []
         self.paint_times: list[float] = []
+        self.swap_times: list[float] = []
+        # Probe: read the drawn FBO back after each render (bench only, costs a few ms).
+        self.probe = False
+        self.probe_shots: list[tuple[float, Any]] = []
+        self._gl_read: Any = None
+        self._gl_bind: Any = None
         self._gl_lib: ctypes.CDLL | None = None
 
     # GL entry points for mpv. Qt's getProcAddress is the portable way; on macOS
@@ -168,6 +174,8 @@ class MpvRenderWidget(QOpenGLWidget):
             block_for_target_time=self.block,
         )
         t1 = time.perf_counter()
+        if self.probe:
+            self.probe_shots.append((t1, self._read_fbo(w, h)))
         with self.paint_cv:
             self.paints += 1
             self.last_paint_t = t1
@@ -179,6 +187,30 @@ class MpvRenderWidget(QOpenGLWidget):
     def _swapped(self) -> None:
         if self.ctx is not None:
             self.ctx.report_swap()
+        with self.paint_cv:
+            if len(self.swap_times) < 200_000:
+                self.swap_times.append(time.perf_counter())
+
+    def _read_fbo(self, w: int, h: int) -> Any:
+        """The FBO mpv just drew into, as an HxWx4 RGBA array, top row first."""
+        import numpy as np
+
+        if self._gl_read is None:
+            void_fn = ctypes.CFUNCTYPE(None, *([ctypes.c_int] * 6), ctypes.c_void_p)
+            self._gl_read = void_fn(self._get_proc_address(None, b"glReadPixels"))
+            bind_fn = ctypes.CFUNCTYPE(None, ctypes.c_uint, ctypes.c_uint)
+            self._gl_bind = bind_fn(self._get_proc_address(None, b"glBindFramebuffer"))
+        gl_framebuffer, gl_rgba, gl_unsigned_byte = 0x8D40, 0x1908, 0x1401
+        self._gl_bind(gl_framebuffer, self.defaultFramebufferObject())
+        buf = np.empty((h, w, 4), dtype=np.uint8)
+        self._gl_read(0, 0, w, h, gl_rgba, gl_unsigned_byte, buf.ctypes.data)
+        return buf[::-1]
+
+    def swap_after(self, t: float) -> float | None:
+        """perf_counter time of the first buffer swap at or after t (None if none yet)."""
+        with self.paint_cv:
+            i = bisect.bisect_left(self.swap_times, t)
+            return self.swap_times[i] if i < len(self.swap_times) else None
 
     def wait_paint_after(self, t: float, timeout: float = 2.0) -> float | None:
         """perf_counter time of the first paint that finished after t, or None."""

@@ -2,26 +2,36 @@
 
     python -m spikes.s2_player.bench_player --mode render|wid [--segments 200] [--seed 2]
         [--work DIR] [--out NAME] [--seeks 100] [--steps 50] [--rebuilds 20]
-        [--play-s SECONDS] [--no-music] [--fonts-dir DIR] [--hwdec auto-safe]
+        [--play-s SECONDS] [--play-after-s 60] [--no-music] [--fonts-dir DIR]
+        [--hwdec no|auto-safe] [--block] [--only STEP,...] [--skip-sync]
 
 Opens a real window (render: QOpenGLWidget + render API; wid: native child window),
-drives mpv from a worker thread and exits. Everything is measured from mpv
-properties and events; nothing needs a human. Steps:
+drives mpv from a worker thread and exits. Nothing needs a human. Steps:
 
-  control   headless: same EDL with segment starts exactly on the first frame's pts
-            (lead 0) -> how many first frames mpv drops (why the EDL uses a lead).
+  control_lead0 / control_lead100
+            headless: exact seek onto the first frame of all segments, with the
+            segment starts exactly on the pts (0) and with the 100 us lead the EDL
+            uses; time-pos and screenshot-raw vs the ffmpeg reference.
+  playback  real-time play of the EDL (default: whole EDL): frame-drop-count,
+            vo-delayed-frame-count, decoder-frame-drop-count, avsync.
   seams     at every seam: exact seek to the last frame of segment k-1,
             screenshot-raw, frame-step, screenshot-raw; both compared with the frame
             ffmpeg extracts from the proxy (mean abs diff < 2/255).
-  playback  real-time play of the EDL (default: whole EDL): frame-drop-count,
-            vo-delayed-frame-count, mistimed-frame-count, avsync.
-  seek      N random frames, `seek t absolute+exact` -> playback-restart (paused and
-            while playing); render mode also times the first paint after it.
-  step      50 x frame-step and 50 x frame-back-step across a seam.
-  rebuild   EDL edited, `loadfile edl://... start=<pos>` and loadfile + seek.
+  seek      N random frames, `seek t absolute+exact`: time to playback-restart and,
+            render mode, time to the first paint whose FBO read-back shows the target
+            frame (and to the buffer swap after it).
+  step      50 x frame-step and 50 x frame-back-step across a seam; time-pos change
+            and painted frame (render mode).
+  rebuild   real edits (shift the segment under the playhead / lengthen the one
+            before it), `loadfile edl://... start=<pos>` and loadfile + seek; the
+            screenshot at the restored position vs the reference of the frame the
+            edited timeline must show; painted time for shifts.
   titles    sub-add ASS (Inter, Cyrillic), screenshot with subtitles -> PNG.
-  sync      headless encode of the same EDL through mpv's own pipeline (o=, with
-            the same lavfi-complex amix music bed): flash vs beep vs EDL, seam clicks.
+  playback_after  60 s of playback after all of the above.
+  sync      headless encode of the EDL through mpv's own pipeline (o=, with the same
+            lavfi-complex amix music bed): flash vs beep vs EDL.
+  seam_audio  headless encode of the EDL over copies of the proxies whose audio has
+            a steady tone (cuts land mid-waveform): each seam vs the ideal hard cut.
 
 Writes spikes/results/s2/<out>-<UTC>.json and spikes/results/s2/titles-<out>.png.
 """
@@ -50,11 +60,15 @@ from spikes.common.media import SAMPLE_RATE, tool
 from spikes.common.results import RESULTS_DIR, write_result
 from spikes.s2_player import timeline as tl
 from spikes.s2_player.prepare import (
+    PROXY_H,
+    PROXY_W,
     TITLE_FONT,
     TITLE_START_S,
     TITLE_TEXT,
+    TONE_HZ,
     load_sources,
     make_music_bed,
+    make_tone_proxies,
     prepare,
     reference_frames,
     write_title_ass,
@@ -136,6 +150,18 @@ class Driver:
             raise RuntimeError(f"screenshot format {r['format']}")
         return tl.bgr0_from_raw(r["data"], r["w"], r["h"], r["stride"]).copy()
 
+    def can_probe(self) -> bool:
+        return self.video is not None and hasattr(self.video, "probe_shots")
+
+    def painted_small(self, rgba: np.ndarray) -> np.ndarray:
+        """Video rect of a read-back FBO, scaled to the proxy size (rect from mpv's
+        osd-dimensions, read once: the video widget has a fixed size)."""
+        if getattr(self, "_rect", None) is None or self._rect_fbo != rgba.shape[:2]:
+            osd = self.m._get_property("osd-dimensions")
+            self._rect = tl.video_rect(osd, rgba.shape[1], rgba.shape[0])
+            self._rect_fbo = rgba.shape[:2]
+        return tl.painted_small(rgba, self._rect, PROXY_W, PROXY_H)
+
     def counters(self) -> dict[str, Any]:
         out = {}
         for p in (
@@ -165,25 +191,38 @@ class Driver:
 # ------------------------------------------------------------------ bench steps
 
 
-def step_control(url_lead0: str, frames0: list[tl.OutFrame]) -> dict[str, Any]:
-    """Headless: exact seek to every first frame of an EDL whose starts sit exactly on
-    the pts; count how many land one frame late (the first frame was dropped)."""
+def step_control(
+    url: str,
+    frames: list[tl.OutFrame],
+    refs: dict[tuple[str, int], np.ndarray],
+    lead_us: int,
+) -> dict[str, Any]:
+    """Headless: exact seek onto the first frame of every segment. Checks both the
+    position (time-pos) and the picture (screenshot-raw vs the ffmpeg reference)."""
     m = mpv.MPV(vo="null", ao="null", pause=True, hr_seek="yes", keep_open="yes")
     try:
         d = Driver(m)
-        d._wait_event("playback-restart", lambda: m.loadfile(url_lead0))
-        firsts = [i for i, f in enumerate(frames0) if i == 0 or frames0[i - 1].seg != f.seg]
-        late = []
+        d._wait_event("playback-restart", lambda: m.loadfile(url))
+        firsts = [i for i, f in enumerate(frames) if i == 0 or frames[i - 1].seg != f.seg]
+        late, wrong_pic, mads = [], [], []
         for i in firsts:
-            d.seek(frames0[i].t_us / tl.US)
-            err = (m.time_pos or 0) * tl.US - frames0[i].t_us
+            f = frames[i]
+            d.seek(f.t_us / tl.US)
+            err = (m.time_pos or 0) * tl.US - f.t_us
             if abs(err) > 1000:
-                late.append({"seg": frames0[i].seg, "src": frames0[i].src, "err_us": round(err)})
+                late.append({"seg": f.seg, "src": f.src, "err_us": round(err)})
+            mad = tl.mean_abs_diff(d.shot(), refs[(f.src, f.frame)])
+            mads.append(mad)
+            if mad >= tl.SEAM_MAD_MAX:
+                wrong_pic.append({"seg": f.seg, "src": f.src, "mad": round(mad, 3)})
         return {
-            "lead_us": 0,
+            "lead_us": lead_us,
             "segments": len(firsts),
             "first_frame_lost": len(late),
+            "picture_wrong": len(wrong_pic),
+            "first_mad": tl.summary_ms(mads),
             "examples": late[:5],
+            "picture_examples": wrong_pic[:5],
         }
     finally:
         m.terminate()
@@ -330,25 +369,84 @@ def _by_bucket(events: list[dict[str, Any]], prop: str, size_s: float) -> dict[s
     return out
 
 
-def step_seek(
-    d: Driver, frames: list[tl.OutFrame], n: int, rng: random.Random, playing: bool
+def painted_hit(
+    d: Driver,
+    t0: float,
+    target: np.ndarray,
+    wrong: list[np.ndarray],
+    timeout: float = 1.0,
 ) -> dict[str, Any]:
+    """Wait for the first paint after t0 whose read-back FBO matches `target` (MAD
+    below PAINTED_MAD_MAX and closer than every `wrong` reference). Returns the time
+    of that paint and of the buffer swap after it, both from t0, in ms."""
+    video = d.video
+    deadline = time.perf_counter() + timeout
+    seen = 0
+    first_mad = None
+    while True:
+        shots = [s for s in list(video.probe_shots) if s[0] >= t0]
+        for t, img in shots[seen:]:
+            seen += 1
+            small = d.painted_small(img)
+            mt = tl.small_mad(small, target)
+            if first_mad is None:
+                first_mad = mt
+            if mt < tl.PAINTED_MAD_MAX and all(mt < tl.small_mad(small, w) for w in wrong):
+                sw = video.swap_after(t)
+                return {
+                    "paint_ms": (t - t0) * 1000,
+                    "swap_ms": None if sw is None else (sw - t0) * 1000,
+                    "mad": mt,
+                    "paints_before": seen - 1,
+                }
+        if time.perf_counter() > deadline:
+            return {"paint_ms": None, "swap_ms": None, "first_mad": first_mad, "paints": seen}
+        time.sleep(0.003)
+
+
+def _painted_summary(hits: list[dict[str, Any]]) -> dict[str, Any]:
+    ok = [h for h in hits if h["paint_ms"] is not None]
+    swaps = [h["swap_ms"] if h["swap_ms"] is not None else h["paint_ms"] for h in ok]
+    return {
+        "n": len(hits),
+        "not_seen_within_1s": len(hits) - len(ok),
+        "to_painted_ms": tl.summary_ms([h["paint_ms"] for h in ok]),
+        "to_swap_ms": tl.summary_ms(swaps),
+        "painted_mad": tl.summary_ms([h["mad"] for h in ok], 3),
+        "stale_paints_before_hit": sum(h["paints_before"] for h in ok),
+    }
+
+
+def step_seek(
+    d: Driver,
+    frames: list[tl.OutFrame],
+    picks: list[int],
+    refs: dict[tuple[str, int], np.ndarray],
+    playing: bool,
+) -> dict[str, Any]:
+    """Exact seeks to the picked frames. Paused (render mode): the FBO is read back
+    after every paint and the time to the first paint that shows the target frame
+    is measured as well as the time to playback-restart."""
     m = d.m
-    times, to_paint, after_restart, wrong = [], [], [], []
-    picks = [rng.randrange(len(frames) - 10) for _ in range(n)]
+    probe = not playing and d.can_probe()
+    times, after_restart, wrong, hits = [], [], [], []
+    prev: tuple[str, int] | None = None
     if playing:
         m.pause = False
     try:
         for i in picks:
             f = frames[i]
+            key = (f.src, f.frame)
+            if probe:
+                d.video.probe_shots.clear()
+                d.video.probe = True
             t0, t1 = d.seek(f.t_us / tl.US)
             times.append((t1 - t0) * 1000)
-            # Paused: nothing else repaints, so the first paint after the command is the
-            # new frame (it lands just before playback-restart reaches Python). Playing:
-            # paints never stop, so only "first paint after restart" means anything.
-            tp = d.first_paint_after(t0) if not playing else None
-            if tp is not None:
-                to_paint.append((tp - t0) * 1000)
+            if probe:
+                wrong_refs = [refs[(f.src, f.frame + 1)]] + ([refs[prev]] if prev else [])
+                hits.append(painted_hit(d, t0, refs[key], wrong_refs))
+                d.video.probe = False
+                d.video.probe_shots.clear()
             ta = d.paint_after(t1)
             if ta is not None:
                 after_restart.append((ta - t0) * 1000)
@@ -356,11 +454,15 @@ def step_seek(
                 err = (m.time_pos or 0) * tl.US - f.t_us
                 if abs(err) > 1000:
                     wrong.append({"t_us": round(f.t_us), "err_us": round(err)})
+            prev = key
     finally:
         m.pause = True
-    out: dict[str, Any] = {"n": n, "playing": playing, "to_restart_ms": tl.summary_ms(times)}
-    if to_paint:
-        out["to_first_paint_ms"] = tl.summary_ms(to_paint)
+        if d.can_probe():
+            d.video.probe = False
+    out: dict[str, Any] = {"n": len(picks), "playing": playing}
+    out["to_restart_ms"] = tl.summary_ms(times)
+    if hits:
+        out["painted"] = _painted_summary(hits)
     if after_restart:
         out["to_paint_after_restart_ms"] = tl.summary_ms(after_restart)
     if not playing:
@@ -369,19 +471,36 @@ def step_seek(
     return out
 
 
-def step_frame_steps(d: Driver, frames: list[tl.OutFrame], n: int) -> dict[str, Any]:
-    """n forward steps then n back steps, starting n/2 frames before a mid seam."""
-    firsts = [i for i, f in enumerate(frames) if i and frames[i - 1].seg != f.seg]
-    seam = firsts[len(firsts) // 2]
-    start = max(0, seam - n // 2)
+def step_frame_steps(
+    d: Driver,
+    frames: list[tl.OutFrame],
+    start: int,
+    n: int,
+    refs: dict[tuple[str, int], np.ndarray],
+) -> dict[str, Any]:
+    """n forward steps then n back steps from `start` (n/2 frames before a seam).
+    Render mode: also time to the first paint showing the new frame."""
+    probe = d.can_probe()
     d.seek(frames[start].t_us / tl.US)
-    res: dict[str, Any] = {"start_frame_index": start, "seam_index": seam}
+    res: dict[str, Any] = {"start_frame_index": start}
     for back in (False, True):
-        ms_list, errors = [], []
+        ms_list, errors, hits = [], [], []
         i = start if not back else start + n
         for _ in range(n):
+            if probe:
+                d.video.probe_shots.clear()
+                d.video.probe = True
+            t0 = time.perf_counter()
             ms, pos, _prev = d.step(back=back)
+            old = frames[i]
             i = i - 1 if back else i + 1
+            if probe:
+                f = frames[i]
+                hits.append(
+                    painted_hit(d, t0, refs[(f.src, f.frame)], [refs[(old.src, old.frame)]])
+                )
+                d.video.probe = False
+                d.video.probe_shots.clear()
             if pos is None or math.isnan(ms):
                 errors.append({"i": i, "error": "timeout"})
                 continue
@@ -392,95 +511,152 @@ def step_frame_steps(d: Driver, frames: list[tl.OutFrame], n: int) -> dict[str, 
                 j = tl.frame_index_at(frames, pos * tl.US)
                 if j is not None:
                     i = j  # resync so one error is not counted n times
-        res["back" if back else "forward"] = {
+        part: dict[str, Any] = {
             "steps": n,
             "errors": len(errors),
             "error_examples": errors[:5],
             "ms": tl.summary_ms(ms_list),
         }
+        if hits:
+            part["painted"] = _painted_summary(hits)
+        res["back" if back else "forward"] = part
     return res
+
+
+def rebuild_plan(
+    segments: list[tl.Segment], sources: dict[str, tl.Source], n: int, seed: int
+) -> list[dict[str, Any]]:
+    """n real edits around a random playhead. Kinds alternate in pairs:
+    shift   the segment under the playhead moves 25 frames in its source, so the
+            picture at the (unchanged) position changes;
+    extend  the segment before the playhead gets 10 frames longer, so the playhead
+            moves (map_position) and the picture stays the same.
+    Each kind is tried with both loadfile variants."""
+    rng = random.Random(seed)
+    base = tl.output_frames(segments, sources)
+    plan = []
+    for it in range(n):
+        kind = "shift" if (it // 2) % 2 == 0 else "extend"
+        while True:
+            f = base[rng.randrange(len(base) - 10)]
+            if f.seg > 0:
+                break
+        if kind == "shift":
+            new = tl.edit_segment(segments, sources, f.seg, 25)
+            new_pos = f.t_us
+        else:
+            new = tl.edit_length(segments, sources, f.seg - 1, 10)
+            new_pos = tl.map_position(base, tl.output_frames(new, sources), f.t_us)
+        new_frames = tl.output_frames(new, sources)
+        j = tl.frame_index_at(new_frames, new_pos)
+        if j is None:
+            raise RuntimeError("rebuild plan: no frame at the mapped position")
+        nf = new_frames[j]
+        plan.append(
+            {
+                "kind": kind,
+                "variant": "loadfile_start" if it % 2 == 0 else "loadfile_then_seek",
+                "segments": new,
+                "old_pos_us": f.t_us,
+                "new_pos_us": nf.t_us,
+                "old_frame": (f.src, f.frame),
+                "new_frame": (nf.src, nf.frame),
+                "neighbours": [(nf.src, nf.frame - 1), (nf.src, nf.frame + 1)],
+            }
+        )
+    return plan
 
 
 def step_rebuild(
     d: Driver,
     segments: list[tl.Segment],
     sources: dict[str, tl.Source],
-    n: int,
-    rng: random.Random,
+    plan: list[dict[str, Any]],
+    refs: dict[tuple[str, int], np.ndarray],
     playing: bool,
 ) -> dict[str, Any]:
+    """Apply each planned edit: playhead at old_pos, reload the edited EDL at the
+    mapped position. Paused: screenshot-raw at the restored position vs the
+    reference of the frame the edited timeline must show there (and vs the old
+    frame for shifts), plus time to the first painted correct frame."""
     m = d.m
     base_url = tl.edl_url(segments, sources)
-    base_frames = tl.output_frames(segments, sources)
-    starts = tl.seg_out_starts(segments, sources)
+    probe = not playing and d.can_probe()
     rows = []
-    for it in range(n):
-        f = base_frames[rng.randrange(len(base_frames) - 10)]
-        k = min(len(segments) - 1, f.seg + rng.choice([0, 1, 2]))  # edit at or after the playhead
-        new = tl.edit_segment(segments, sources, k, 25)
-        url = tl.edl_url(new, sources)
-        new_frames = tl.output_frames(new, sources)
-        pos_s = f.t_us / tl.US
-        variant = "loadfile_start" if it % 2 == 0 else "loadfile_then_seek"
-        d.seek(pos_s)
+    for e in plan:
+        url = tl.edl_url(e["segments"], sources)
+        old_s, new_s = e["old_pos_us"] / tl.US, e["new_pos_us"] / tl.US
+        d.seek(old_s)
         m.pause = not playing
 
-        def at_pos(_evt: Any, p: float = pos_s) -> bool:
+        def at_pos(_evt: Any, p: float = new_s) -> bool:
             tp = m.time_pos
             return tp is not None and (playing or abs(tp - p) < 0.002)
 
+        if probe:
+            d.video.probe_shots.clear()
+            d.video.probe = True
         t0 = time.perf_counter()
-        if variant == "loadfile_start":
+        if e["variant"] == "loadfile_start":
             t1 = d._wait_event(
                 "playback-restart",
-                lambda u=url, p=pos_s: m.loadfile(u, "replace", start=f"{p:.6f}"),
+                lambda u=url, p=new_s: m.loadfile(u, "replace", start=f"{p:.6f}"),
                 at_pos,
             )
         else:
             d._wait_event("file-loaded", lambda u=url: m.loadfile(u, "replace"))
             t1 = d._wait_event(
                 "playback-restart",
-                lambda p=pos_s: m.command("seek", f"{p:.6f}", "absolute+exact"),
+                lambda p=new_s: m.command("seek", f"{p:.6f}", "absolute+exact"),
                 at_pos,
             )
-        tp = d.paint_after(t1)
         row: dict[str, Any] = {
-            "variant": variant,
-            "edited_seg": k,
+            "kind": e["kind"],
+            "variant": e["variant"],
             "to_restart_ms": (t1 - t0) * 1000,
-            "to_paint_after_restart_ms": None if tp is None else (tp - t0) * 1000,
         }
+        tp = d.paint_after(t1)
+        row["to_paint_after_restart_ms"] = None if tp is None else (tp - t0) * 1000
+        if probe:
+            # Only a shift changes the picture; after an extend the old frame is the
+            # right one, so a paint "hit" would just be the stale picture.
+            if e["kind"] == "shift":
+                wrong = [refs[k] for k in e["neighbours"]] + [refs[e["old_frame"]]]
+                row["painted"] = painted_hit(d, t0, refs[e["new_frame"]], wrong)
+            d.video.probe = False
+            d.video.probe_shots.clear()
         if not playing:
-            j = tl.frame_index_at(new_frames, pos_s * tl.US)
-            row["pos_err_us"] = round(
-                (m.time_pos or 0) * tl.US - (new_frames[j].t_us if j is not None else 0)
-            )
-            row["frame_ok"] = j is not None and abs(row["pos_err_us"]) <= 1000
+            shot = d.shot()
+            row["pos_err_us"] = round((m.time_pos or 0) * tl.US - e["new_pos_us"])
+            row["new_mad"] = tl.mean_abs_diff(shot, refs[e["new_frame"]])
+            row["old_mad"] = tl.mean_abs_diff(shot, refs[e["old_frame"]])
+            row["frame_ok"] = abs(row["pos_err_us"]) <= 1000 and row["new_mad"] < tl.SEAM_MAD_MAX
+            if e["kind"] == "shift":  # the edit must be visible: old picture gone
+                row["frame_ok"] = row["frame_ok"] and row["old_mad"] >= tl.SEAM_MAD_MAX
         rows.append(row)
         m.pause = True
         d._wait_event(
             "playback-restart",
-            lambda p=pos_s: m.loadfile(base_url, "replace", start=f"{p:.6f}"),
+            lambda p=old_s: m.loadfile(base_url, "replace", start=f"{p:.6f}"),
         )
-    out: dict[str, Any] = {
-        "n": n,
-        "playing": playing,
-        "edl_segments": len(segments),
-        "total_s": starts[-1] / tl.US,
-    }
+    out: dict[str, Any] = {"n": len(plan), "playing": playing, "edl_segments": len(segments)}
     for variant in ("loadfile_start", "loadfile_then_seek"):
         sub = [r for r in rows if r["variant"] == variant]
-        out[variant] = {
+        part: dict[str, Any] = {
             "to_restart_ms": tl.summary_ms([r["to_restart_ms"] for r in sub]),
             "to_paint_after_restart_ms": tl.summary_ms(
-                [
-                    r["to_paint_after_restart_ms"]
-                    for r in sub
-                    if r["to_paint_after_restart_ms"] is not None
-                ]
+                [r["to_paint_after_restart_ms"] for r in sub if r["to_paint_after_restart_ms"]]
             ),
-            "wrong_frame": sum(1 for r in sub if r.get("frame_ok") is False),
         }
+        if probe:
+            part["painted_shift"] = _painted_summary([r["painted"] for r in sub if "painted" in r])
+            part["extend_to_restart_ms"] = tl.summary_ms(
+                [r["to_restart_ms"] for r in sub if r["kind"] == "extend"]
+            )
+        if not playing:
+            part["frame_ok"] = sum(1 for r in sub if r["frame_ok"])
+            part["frame_wrong"] = sum(1 for r in sub if not r["frame_ok"])
+        out[variant] = part
     out["rows"] = rows
     return out
 
@@ -531,7 +707,24 @@ def step_sync(
     out: Path,
     hwdec: str,
 ) -> dict[str, Any]:
-    """Headless encode through mpv's playback pipeline (o=), then detectors."""
+    """Headless encode through mpv's playback pipeline (o=) with the music bed, then
+    flash/beep detectors vs the EDL."""
+    extra: dict[str, Any] = {}
+    if bed is not None:
+        extra = {"audio_files": str(bed), "lavfi_complex": LAVFI_MUSIC}
+    info = encode_through_mpv(url, out, hwdec, extra)
+    expected = tl.expected_events(segments, sources)
+    report = tl.sync_report(detect_flashes(out), detect_beeps(out), expected)
+    return {
+        "music_bed": bed is not None,
+        "music_440hz_level": tone_level(decode_mono(out), 440.0),
+        **info,
+        **report,
+    }
+
+
+def encode_through_mpv(url: str, out: Path, hwdec: str, extra: dict[str, Any]) -> dict[str, Any]:
+    """Run mpv's encoding mode over url -> out (matroska, x264, PCM audio)."""
     opts: dict[str, Any] = {
         "o": str(out),
         "of": "matroska",
@@ -539,10 +732,8 @@ def step_sync(
         "ovcopts": "preset=veryfast,crf=18",
         "oac": "pcm_s16le",
         "hwdec": hwdec,
+        **extra,
     }
-    if bed is not None:
-        opts["audio_files"] = str(bed)
-        opts["lavfi_complex"] = LAVFI_MUSIC
     errors: list[str] = []
     m = mpv.MPV(
         log_handler=lambda lvl, comp, text: (
@@ -557,21 +748,20 @@ def step_sync(
         m.wait_for_event("end-file", timeout=1800)
     finally:
         m.terminate()
-    enc_s = time.perf_counter() - t0
-    expected = tl.expected_events(segments, sources)
-    report = tl.sync_report(detect_flashes(out), detect_beeps(out), expected)
-    samples = decode_mono(out)
-    music = tone_level(samples, 440.0)
-    starts = tl.seg_out_starts(segments, sources)
-    clicks = tl.seam_clicks(samples, SAMPLE_RATE, starts[1:-1], [e["beep_us"] for e in expected])
-    return {
-        "music_bed": bed is not None,
-        "music_440hz_level": music,
-        "encode_s": round(enc_s, 2),
-        "errors": errors[:10],
-        **report,
-        "clicks": clicks,
-    }
+    return {"encode_s": round(time.perf_counter() - t0, 2), "errors": errors[:10]}
+
+
+def step_seam_audio(
+    segments: list[tl.Segment], tone_sources: dict[str, tl.Source], out: Path, hwdec: str
+) -> dict[str, Any]:
+    """Clip audio with a continuous tone, cut by the same EDL, encoded by mpv (no
+    music): every seam vs the ideal hard cut from the continuously decoded sources."""
+    url = tl.edl_url(segments, tone_sources)
+    info = encode_through_mpv(url, out, hwdec, {})
+    played = decode_mono(out)
+    src_audio = {k: decode_mono(Path(s.path)) for k, s in tone_sources.items()}
+    res = tl.seam_residuals(played, src_audio, segments, tone_sources, SAMPLE_RATE)
+    return {**info, "tone_hz": TONE_HZ, **res}
 
 
 def tone_level(samples: np.ndarray, freq: float, win_s: float = 0.1) -> float:
@@ -637,17 +827,19 @@ def run_gui(args: argparse.Namespace, ctx: dict[str, Any]) -> dict[str, Any]:
     if args.mode == "render":
         from spikes.s2_player.render_widget import MpvRenderWidget
 
-        video: Any = MpvRenderWidget(block_for_target_time=not args.no_block, **opts)
+        video: Any = MpvRenderWidget(block_for_target_time=args.block, **opts)
     else:
         from spikes.s2_player.wid_widget import MpvWidWidget
 
         video = MpvWidWidget(**opts)
+    # Fixed 960x540 video area: on a 2x screen the FBO video rect is exactly 2x the
+    # proxy, so the painted-frame probe compares like with like.
+    video.setFixedSize(PROXY_W, PROXY_H)
     win = PlayerWindow(video)
     # macOS throttles drawing of windows covered by other apps; keep ours on top
     # and in the corner so the playback numbers measure mpv, not occlusion.
     win.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
     win.move(0, 0)
-    win.resize(980, 640)
     win.show()
     win.raise_()
     win.activateWindow()
@@ -657,7 +849,6 @@ def run_gui(args: argparse.Namespace, ctx: dict[str, Any]) -> dict[str, Any]:
 
     def worker() -> None:
         d = Driver(video.mpv, video)
-        rng = random.Random(args.seed)
         try:
             time.sleep(0.5)  # let the window and GL context come up
             t0 = time.perf_counter()
@@ -674,25 +865,33 @@ def run_gui(args: argparse.Namespace, ctx: dict[str, Any]) -> dict[str, Any]:
                     result[p] = video.mpv._get_property(p)
                 except Exception:  # noqa: BLE001
                     result[p] = None
-            for name, fn in (
+            steps = (
                 ("playback", lambda: step_playback(d, args.play_s, ctx["starts"][1:-1])),
                 ("seams", lambda: step_seams(d, ctx["frames"], ctx["refs"])),
-                ("seek_paused", lambda: step_seek(d, ctx["frames"], args.seeks, rng, False)),
+                (
+                    "seek_paused",
+                    lambda: step_seek(d, ctx["frames"], ctx["seek_picks"], ctx["refs"], False),
+                ),
                 (
                     "seek_playing",
-                    lambda: step_seek(d, ctx["frames"], max(10, args.seeks // 3), rng, True),
+                    lambda: step_seek(d, ctx["frames"], ctx["seek_play_picks"], ctx["refs"], True),
                 ),
-                ("frame_step", lambda: step_frame_steps(d, ctx["frames"], args.steps)),
+                (
+                    "frame_step",
+                    lambda: step_frame_steps(
+                        d, ctx["frames"], ctx["step_start"], args.steps, ctx["refs"]
+                    ),
+                ),
                 (
                     "rebuild_paused",
                     lambda: step_rebuild(
-                        d, ctx["segments"], ctx["sources"], args.rebuilds, rng, False
+                        d, ctx["segments"], ctx["sources"], ctx["rebuilds"], ctx["refs"], False
                     ),
                 ),
                 (
                     "rebuild_playing",
                     lambda: step_rebuild(
-                        d, ctx["segments"], ctx["sources"], max(4, args.rebuilds // 2), rng, True
+                        d, ctx["segments"], ctx["sources"], ctx["rebuilds_play"], ctx["refs"], True
                     ),
                 ),
                 ("titles", lambda: step_titles(d, ctx["ass"], ctx["png"], log)),
@@ -700,7 +899,10 @@ def run_gui(args: argparse.Namespace, ctx: dict[str, Any]) -> dict[str, Any]:
                     "playback_after",
                     lambda: step_playback(d, args.play_after_s, ctx["starts"][1:-1]),
                 ),
-            ):
+            )
+            for name, fn in steps:
+                if not wanted_step(args, name):
+                    continue
                 print(f"[s2] {name} ...", flush=True)
                 t = time.perf_counter()
                 try:
@@ -728,53 +930,150 @@ def run_gui(args: argparse.Namespace, ctx: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------------------ verdicts
 
 
+VERDICT_KEYS = (
+    "seams_0_bad",
+    "control_lead100_first_frames",
+    "playback_0_dropped_or_delayed",
+    "playback_after_seeks_0_dropped_or_delayed",
+    "seek_painted_p95_le_150ms",
+    "seek_event_p95_le_150ms",
+    "rebuild_paused_le_300ms",
+    "rebuild_playing_le_300ms",
+    "frame_step_le_100ms_no_errors",
+    "sync_within_1_frame",
+    "seam_audio_no_glitch",
+    "titles_rendered",
+)
+
+
+def _err(r: dict[str, Any], name: str) -> str | None:
+    step = r.get(name)
+    if step is None:
+        return "not run"
+    if isinstance(step, dict) and "error" in step:
+        return "step failed: " + step["error"].strip().splitlines()[-1]
+    return None
+
+
+def _drops(c: dict[str, Any]) -> int:
+    keys = ("frame-drop-count", "vo-delayed-frame-count", "decoder-frame-drop-count")
+    return sum(int(c.get(k) or 0) for k in keys)
+
+
+def _worst(*values: float | None) -> float | None:
+    vals = [v for v in values if v is not None]
+    return max(vals) if vals else None
+
+
 def verdicts(r: dict[str, Any]) -> dict[str, Any]:
+    """One entry per brief metric, always present: pass None + reason when the step
+    did not run or failed."""
     v: dict[str, Any] = {}
-    seams = r.get("seams", {})
-    pb = r.get("playback", {}).get("counters_delta", {})
-    if "bad_seams" in seams:
-        drops = (pb.get("frame-drop-count") or 0) + (pb.get("vo-delayed-frame-count") or 0)
-        v["seams_0_bad"] = tl.verdict(seams["bad_seams"], 0, unit="seams")
-        v["playback_0_dropped_or_delayed"] = tl.verdict(drops if pb else None, 0, unit="frames")
-    pa = r.get("playback_after", {}).get("counters_delta", {})
-    if pa:
-        drops = (pa.get("frame-drop-count") or 0) + (pa.get("vo-delayed-frame-count") or 0)
-        v["playback_after_seeks_0_dropped_or_delayed"] = tl.verdict(drops, 0, unit="frames")
-    sk = r.get("seek_paused", {}).get("to_restart_ms", {})
-    v["seek_p95_le_150ms"] = tl.verdict(sk.get("p95"), tl.SEEK_P95_MS, unit="ms")
-    for name in ("rebuild_paused", "rebuild_playing"):
-        rb = r.get(name, {})
-        worst = None
-        for variant in ("loadfile_start", "loadfile_then_seek"):
-            mx = rb.get(variant, {}).get("to_restart_ms", {}).get("max")
-            if mx is not None:
-                worst = mx if worst is None else max(worst, mx)
-        v[f"{name}_max_le_300ms"] = tl.verdict(worst, tl.REBUILD_MAX_MS, unit="ms")
-    fs = r.get("frame_step", {})
-    if "forward" in fs:
-        worst = max(fs["forward"]["ms"].get("max", 0), fs["back"]["ms"].get("max", 0))
-        errs = fs["forward"]["errors"] + fs["back"]["errors"]
-        v["frame_step_le_100ms_no_errors"] = tl.verdict(
-            worst, tl.STEP_MAX_MS, unit="ms", ok=worst <= tl.STEP_MAX_MS and errs == 0
-        )
-    sy = r.get("sync", {})
-    if "worst_abs_us" in sy:
-        v["sync_within_1_frame"] = tl.verdict(
+
+    def put(key: str, step: str, make: Any) -> None:
+        reason = _err(r, step)
+        if reason is None:
+            try:
+                v[key] = make(r[step])
+                return
+            except (KeyError, TypeError, ValueError) as exc:
+                reason = f"incomplete result: {exc!r}"
+        v[key] = {"value": None, "pass": None, "reason": reason}
+
+    put("seams_0_bad", "seams", lambda s: tl.verdict(s["bad_seams"], 0, unit="seams"))
+    put(
+        "control_lead100_first_frames",
+        "control_lead100",
+        lambda c: tl.verdict(c["first_frame_lost"] + c["picture_wrong"], 0, unit="segments wrong"),
+    )
+    put(
+        "playback_0_dropped_or_delayed",
+        "playback",
+        lambda p: tl.verdict(_drops(p["counters_delta"]), 0, unit="frames"),
+    )
+    put(
+        "playback_after_seeks_0_dropped_or_delayed",
+        "playback_after",
+        lambda p: tl.verdict(_drops(p["counters_delta"]), 0, unit="frames"),
+    )
+
+    def seek_painted(s: dict[str, Any]) -> dict[str, Any]:
+        p = s["painted"]
+        val = p["to_swap_ms"].get("p95")
+        ok = val is not None and val <= tl.SEEK_P95_MS and p["not_seen_within_1s"] == 0
+        return tl.verdict(val, tl.SEEK_P95_MS, unit="ms", ok=ok)
+
+    put("seek_painted_p95_le_150ms", "seek_paused", seek_painted)
+    put(
+        "seek_event_p95_le_150ms",
+        "seek_paused",
+        lambda s: tl.verdict(s["to_restart_ms"]["p95"], tl.SEEK_P95_MS, unit="ms"),
+    )
+
+    def rebuild(rb: dict[str, Any]) -> dict[str, Any]:
+        parts = [rb[k] for k in ("loadfile_start", "loadfile_then_seek")]
+        if "painted_shift" in parts[0]:  # paused, render: first correct painted frame
+            vals = [p["painted_shift"]["to_swap_ms"].get("max") for p in parts]
+            vals += [p["extend_to_restart_ms"].get("max") for p in parts]
+            unseen = sum(p["painted_shift"]["not_seen_within_1s"] for p in parts)
+            wrong = sum(p.get("frame_wrong", 0) for p in parts)
+            val = _worst(*vals)
+            ok = val is not None and val <= tl.REBUILD_MAX_MS and unseen == 0 and wrong == 0
+            return {
+                **tl.verdict(val, tl.REBUILD_MAX_MS, unit="ms", ok=ok),
+                "basis": "painted (shift edits); playback-restart (extend edits, same picture)",
+            }
+        vals = [p["to_paint_after_restart_ms"].get("max") for p in parts]
+        vals += [p["to_restart_ms"].get("max") for p in parts]
+        val = _worst(*vals)
+        wrong = sum(p.get("frame_wrong", 0) for p in parts)
+        ok = val is not None and val <= tl.REBUILD_MAX_MS and wrong == 0
+        return {
+            **tl.verdict(val, tl.REBUILD_MAX_MS, unit="ms", ok=ok),
+            "basis": "paint after playback-restart (upper bound)",
+        }
+
+    put("rebuild_paused_le_300ms", "rebuild_paused", rebuild)
+    put("rebuild_playing_le_300ms", "rebuild_playing", rebuild)
+
+    def step(fs: dict[str, Any]) -> dict[str, Any]:
+        parts = [fs["forward"], fs["back"]]
+        errs = sum(p["errors"] for p in parts)
+        if all("painted" in p for p in parts):
+            val = _worst(*[p["painted"]["to_swap_ms"].get("max") for p in parts])
+            errs += sum(p["painted"]["not_seen_within_1s"] for p in parts)
+            basis = "painted"
+        else:
+            val = _worst(*[p["ms"].get("max") for p in parts])
+            basis = "time-pos change"
+        ok = val is not None and val <= tl.STEP_MAX_MS and errs == 0
+        return {**tl.verdict(val, tl.STEP_MAX_MS, unit="ms", ok=ok), "basis": basis}
+
+    put("frame_step_le_100ms_no_errors", "frame_step", step)
+    put(
+        "sync_within_1_frame",
+        "sync",
+        lambda sy: tl.verdict(
             sy["worst_abs_us"] / 1000,
             sy["frame_us_used"] / 1000,
             unit="ms",
             ok=sy["worst_abs_us"] <= sy["frame_us_used"] and sy["all_events_found"],
-        )
-        cl = sy.get("clicks", {})
-        if "seams_above_rest_peak" in cl:
-            v["no_seam_clicks"] = tl.verdict(cl["seams_above_rest_peak"], 0, unit="seams")
-    ti = r.get("titles", {})
-    if "rendered" in ti:
-        v["titles_rendered"] = {
-            "value": ti["changed_pixels"],
-            "pass": ti["rendered"],
+        ),
+    )
+    put(
+        "seam_audio_no_glitch",
+        "seam_audio",
+        lambda a: tl.verdict(a["seams_above_limit"] + a["lag_at_search_edge"], 0, unit="seams"),
+    )
+    put(
+        "titles_rendered",
+        "titles",
+        lambda t: {
+            "value": t["changed_pixels"],
+            "pass": t["rendered"],
             "note": "tofu: check PNG by eye",
-        }
+        },
+    )
     return v
 
 
@@ -842,9 +1141,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--play-after-s", type=float, default=60.0, help="second playback after the seek steps"
     )
-    ap.add_argument("--skip-sync", action="store_true")
+    ap.add_argument("--skip-sync", action="store_true", help="skip sync and seam_audio")
     ap.add_argument(
-        "--no-block", action="store_true", help="render API: block_for_target_time=0 in paintGL"
+        "--only",
+        default="",
+        help="comma list of steps to run (control_lead0, control_lead100, playback, seams, "
+        "seek_paused, seek_playing, frame_step, rebuild_paused, rebuild_playing, titles, "
+        "playback_after, sync, seam_audio)",
+    )
+    ap.add_argument(
+        "--block",
+        action="store_true",
+        help="render API: block_for_target_time=1 in paintGL (mpv default; the bench "
+        "default is 0, which keeps paintGL from sleeping until the frame's display time)",
     )
     ap.add_argument(
         "--mpv-opt", action="append", default=[], help="extra mpv option k=v (repeatable)"
@@ -865,12 +1174,29 @@ def main(argv: list[str] | None = None) -> int:
     frames = tl.output_frames(segments, sources)
     starts = tl.seg_out_starts(segments, sources)
     total_s = starts[-1] / tl.US
+
+    # Everything random is drawn up front, so the reference frames can be extracted
+    # before the window opens.
+    rng = random.Random(args.seed)
+    seek_picks = [rng.randrange(len(frames) - 10) for _ in range(args.seeks)]
+    seek_play_picks = [rng.randrange(len(frames) - 10) for _ in range(max(10, args.seeks // 3))]
+    firsts = [i for i, f in enumerate(frames) if i and frames[i - 1].seg != f.seg]
+    step_start = max(1, firsts[len(firsts) // 2] - args.steps // 2)
+    rebuilds = rebuild_plan(segments, sources, args.rebuilds, args.seed + 1)
+    rebuilds_play = rebuild_plan(segments, sources, max(4, args.rebuilds // 2), args.seed + 2)
+
     wanted: set[tuple[str, int]] = set()
     for i, f in enumerate(frames):
         if i == 0 or frames[i - 1].seg != f.seg:
             wanted |= {(f.src, f.frame), (f.src, f.frame + 1)}
             if i:
                 wanted.add((frames[i - 1].src, frames[i - 1].frame))
+    for i in seek_picks:
+        wanted |= {(frames[i].src, frames[i].frame), (frames[i].src, frames[i].frame + 1)}
+    for i in range(step_start - 1, step_start + args.steps + 2):
+        wanted.add((frames[i].src, frames[i].frame))
+    for e in rebuilds:
+        wanted |= {e["old_frame"], e["new_frame"], *e["neighbours"]}
     refs = reference_frames(sources, wanted, args.work / f"frames-{paths['proxy'].name}")
     bed = (
         None
@@ -889,6 +1215,11 @@ def main(argv: list[str] | None = None) -> int:
         "bed": bed,
         "ass": ass,
         "png": png,
+        "seek_picks": seek_picks,
+        "seek_play_picks": seek_play_picks,
+        "step_start": step_start,
+        "rebuilds": rebuilds,
+        "rebuilds_play": rebuilds_play,
     }
 
     result: dict[str, Any] = {
@@ -897,6 +1228,7 @@ def main(argv: list[str] | None = None) -> int:
         "args": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()},
         "edl": {
             "segments": len(segments),
+            "frames": len(frames),
             "total_s": total_s,
             "lead_us": tl.CUT_LEAD_US,
             "sources": {k: {"fps": str(s.fps), "frames": s.frames} for k, s in sources.items()},
@@ -907,33 +1239,60 @@ def main(argv: list[str] | None = None) -> int:
         },
         "thresholds": {
             "seam_mad_max": tl.SEAM_MAD_MAX,
+            "painted_mad_max": tl.PAINTED_MAD_MAX,
             "seek_p95_ms": tl.SEEK_P95_MS,
             "rebuild_max_ms": tl.REBUILD_MAX_MS,
             "step_max_ms": tl.STEP_MAX_MS,
             "sync_max_frames": tl.SYNC_MAX_FRAMES,
+            "seam_audio_max": tl.SEAM_AUDIO_MAX,
         },
     }
     result["libmpv"] = libmpv_info()
 
-    print("[s2] control (lead 0) ...", flush=True)
-    lead = tl.CUT_LEAD_US
-    tl.CUT_LEAD_US = 0
-    try:
-        url0, frames0 = tl.edl_url(segments, sources), tl.output_frames(segments, sources)
-    finally:
-        tl.CUT_LEAD_US = lead
-    result["control_lead0"] = step_control(url0, frames0)
+    def headless(step: str, fn: Any) -> None:
+        if not wanted_step(args, step):
+            return
+        print(f"[s2] {step} ...", flush=True)
+        try:
+            result[step] = fn()
+        except Exception:  # noqa: BLE001 - record; the verdict says "step failed"
+            result[step] = {"error": traceback.format_exc()}
 
-    result.update(run_gui(args, ctx))
+    def control(lead_us: int) -> dict[str, Any]:
+        keep = tl.CUT_LEAD_US
+        tl.CUT_LEAD_US = lead_us
+        try:
+            u, fr = tl.edl_url(segments, sources), tl.output_frames(segments, sources)
+        finally:
+            tl.CUT_LEAD_US = keep
+        return step_control(u, fr, refs, lead_us)
+
+    headless("control_lead0", lambda: control(0))
+    headless("control_lead100", lambda: control(tl.CUT_LEAD_US))
+
+    gui_steps = {
+        "playback", "seams", "seek_paused", "seek_playing", "frame_step",
+        "rebuild_paused", "rebuild_playing", "titles", "playback_after",
+    }  # fmt: skip
+    if any(wanted_step(args, s) for s in gui_steps):
+        result.update(run_gui(args, ctx))
 
     if not args.skip_sync:
-        print("[s2] sync (encode through mpv) ...", flush=True)
-        try:
-            result["sync"] = step_sync(
+        headless(
+            "sync",
+            lambda: step_sync(
                 url, bed, segments, sources, args.work / f"sync-{name}.mkv", args.hwdec
-            )
-        except Exception:  # noqa: BLE001
-            result["sync"] = {"error": traceback.format_exc()}
+            ),
+        )
+        headless(
+            "seam_audio",
+            lambda: step_seam_audio(
+                segments,
+                load_sources(make_tone_proxies(paths["proxy"])),
+                args.work / f"seam-audio-{name}.mkv",
+                args.hwdec,
+            ),
+        )
 
     result["verdicts"] = verdicts(result)
     path = write_result("s2", name, result)
@@ -941,6 +1300,10 @@ def main(argv: list[str] | None = None) -> int:
     for k, val in result["verdicts"].items():
         print(f"  {k}: {val}")
     return 0
+
+
+def wanted_step(args: argparse.Namespace, step: str) -> bool:
+    return not args.only or step in args.only.split(",")
 
 
 if __name__ == "__main__":

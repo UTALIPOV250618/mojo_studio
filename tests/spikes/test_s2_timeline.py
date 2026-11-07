@@ -134,17 +134,85 @@ def test_mean_abs_diff_and_raw_screenshot():
         tl.mean_abs_diff(img, img[:1])
 
 
-def test_seam_clicks_finds_a_gap_and_ignores_sine():
-    sr = 48_000
-    t = np.arange(sr * 2) / sr
-    x = 0.1 * np.sin(2 * np.pi * 440 * t)
-    clean = tl.seam_clicks(x, sr, [500_000, 1_500_000], [])
-    assert clean["seams_above_rest_peak"] == 0
-    y = x.copy()
-    y[round(0.5 * sr) : round(0.5 * sr) + 48] = 0  # 1 ms dropout at the first seam
-    hit = tl.seam_clicks(y, sr, [500_000, 1_500_000], [])
-    assert hit["seams_above_rest_peak"] == 1
-    assert hit["worst_seams"][0]["i"] == 0
+def _tone_sources():
+    sr = 1000  # 1 kHz "sample rate" keeps the arrays small
+    srcs = {
+        "a": tl.Source("a", "a", Fraction(25), 250),  # 10 s
+        "b": tl.Source("b", "b", Fraction(25), 250),
+    }
+    t = np.arange(10 * sr) / sr
+    audio = {"a": 0.3 * np.sin(2 * np.pi * 31 * t), "b": 0.3 * np.sin(2 * np.pi * 47 * t + 1)}
+    segs = [tl.Segment("a", 10, 50), tl.Segment("b", 60, 40), tl.Segment("a", 150, 50)]
+    return sr, srcs, audio, segs
+
+
+def _ideal_cut(sr, srcs, audio, segs):
+    parts = []
+    for seg in segs:
+        start, length = tl.seg_times(seg, srcs)
+        s0 = round(start * sr / tl.US)
+        parts.append(audio[seg.src][s0 : s0 + round(length * sr / tl.US)])
+    return np.concatenate(parts)
+
+
+def test_seam_residuals_pass_on_ideal_cut():
+    sr, srcs, audio, segs = _tone_sources()
+    out = _ideal_cut(sr, srcs, audio, segs)
+    r = tl.seam_residuals(out, audio, segs, srcs, sr, max_lag=3)
+    assert r["n_seams"] == 2 and r["n_baseline"] == 3
+    assert r["seam_peak"]["max"] < 1e-9
+    assert r["cut_step"]["max"] > 0.05  # the cuts themselves land mid-waveform
+    assert r["seams_above_limit"] == 0 and r["lag_at_search_edge"] == 0
+
+
+def test_seam_residuals_catch_gap_and_shift():
+    sr, srcs, audio, segs = _tone_sources()
+    ideal = _ideal_cut(sr, srcs, audio, segs)
+    seam = round(tl.seg_out_starts(segs, srcs)[1] * sr / tl.US)
+    gap = ideal.copy()
+    gap[seam : seam + 3] = 0  # 3 ms of silence right after the first seam
+    r = tl.seam_residuals(gap, audio, segs, srcs, sr, max_lag=3)
+    assert r["seams_above_limit"] >= 1
+    assert r["worst_seams"][0]["seam"] == 1
+    late = np.concatenate([ideal[:seam], np.zeros(8), ideal[seam:]])  # 8 ms late
+    r2 = tl.seam_residuals(late, audio, segs, srcs, sr, max_lag=3)
+    assert r2["seams_above_limit"] + r2["lag_at_search_edge"] >= 1
+
+
+def test_edit_length_and_map_position():
+    segs = [tl.Segment("s25", 100, 25), tl.Segment("s25", 400, 25), tl.Segment("s25", 1470, 25)]
+    longer = tl.edit_length(segs, SOURCES, 0, 10)
+    assert longer[0] == tl.Segment("s25", 100, 35) and longer[1:] == segs[1:]
+    head = tl.edit_length(segs, SOURCES, 2, 10)  # no room at the tail
+    assert head[2] == tl.Segment("s25", 1460, 35)
+    old, new = tl.output_frames(segs, SOURCES), tl.output_frames(longer, SOURCES)
+    pos = old[30].t_us  # 6th frame of segment 1
+    mapped = tl.map_position(old, new, pos)
+    assert mapped == pytest.approx(pos + 400_000)
+    j = tl.frame_index_at(new, mapped)
+    assert (new[j].seg, new[j].frame) == (1, 405)
+    assert tl.map_position(old, new, old[3].t_us) == old[3].t_us  # before the edit
+
+
+def test_painted_frame_helpers():
+    assert tl.video_rect(
+        {"w": 1920, "h": 1100, "mt": 10, "mb": 10, "ml": 0, "mr": 0}, 1920, 1100
+    ) == (
+        0,
+        10,
+        1920,
+        1080,
+    )
+    ref = np.zeros((2, 3, 4), dtype=np.uint8)
+    ref[..., 0], ref[..., 1], ref[..., 2] = 10, 20, 30  # bgr0
+    rgba = np.zeros((6, 6, 4), dtype=np.uint8)
+    rgba[1:5, :, 0], rgba[1:5, :, 1], rgba[1:5, :, 2] = 30, 20, 10  # RGB, 2x scale + bars
+    small = tl.painted_small(rgba, (0, 1, 6, 4), 3, 2)
+    assert small.shape == (2, 3, 3)
+    assert tl.small_mad(small, ref) == 0
+    odd = tl.resample_area(np.arange(5 * 7 * 1, dtype=np.uint8).reshape(5, 7, 1), 3, 2)
+    assert odd.shape == (2, 3, 1)
+    assert odd.min() >= 0 and odd.max() <= 34
 
 
 def test_percentile_and_summary():

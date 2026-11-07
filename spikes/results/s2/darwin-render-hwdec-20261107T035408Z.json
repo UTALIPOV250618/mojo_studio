@@ -3687,7 +3687,8 @@
     "rendered": true,
     "font_log": [
       "info sub/ass: fontselect: Using default font family: (Inter, 400, 0) -> /System/Library/Fonts/Helvetica.ttc, -1, Helvetica"
-    ]
+    ],
+    "png_note": "PNG not kept (identical title render; deleted as a duplicate)"
   },
   "playback_after": {
     "played_s": 60.007,
