@@ -18,7 +18,7 @@ python -m venv .venv
 .venv/bin/pip install -e ".[dev,spikes]"      # Windows: .venv\Scripts\pip
 ```
 
-Нужны `ffmpeg` и `ffprobe` версии 5.1 или новее (флаг `-fps_mode`) в `PATH`. Все скрипты принимают пути аргументами и работают с кириллицей и пробелами.
+Нужны `ffmpeg` и `ffprobe` версии 7.0 или новее (`-/filter_complex <файл>`, `-fps_mode`) в `PATH`. Все скрипты принимают пути аргументами и работают с кириллицей и пробелами.
 
 ## Где лежат данные
 

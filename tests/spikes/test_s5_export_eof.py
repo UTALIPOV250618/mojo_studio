@@ -1,7 +1,9 @@
 """Short-source / EOF padding of the S5 export (small frames, ~3 s of work)."""
 
 import json
+import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -12,9 +14,18 @@ from spikes.common.detect import detect_beeps, detect_flashes
 from spikes.common.media import generate_clip, generate_music, probe, run_ffmpeg
 from spikes.s5_export import build_chunks
 
+
+def _ffmpeg_major() -> int:
+    exe = shutil.which("ffmpeg")
+    if exe is None or shutil.which("ffprobe") is None:
+        return 0
+    out = subprocess.run([exe, "-version"], capture_output=True, text=True).stdout
+    m = re.match(r"ffmpeg version n?(\d+)\.", out)
+    return int(m.group(1)) if m else 99  # git/master builds: assume new
+
+
 needs_ffmpeg = pytest.mark.skipif(
-    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
-    reason="ffmpeg/ffprobe not found on PATH",
+    _ffmpeg_major() < 7, reason="needs ffmpeg/ffprobe 7.0+ on PATH (-/filter_complex)"
 )
 
 
