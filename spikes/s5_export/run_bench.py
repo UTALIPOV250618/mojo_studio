@@ -143,6 +143,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--only", default="sync,reuse,eof,speed")
     ap.add_argument("--encoders", default="auto", help="comma list or 'auto'")
     ap.add_argument("--edl-dir", default=str(make_edl.DEFAULT_EDL_DIR))
+    ap.add_argument(
+        "--no-single",
+        action="store_true",
+        help="skip the one-filter_complex runs (they need ~1.8 GB RAM in one ffmpeg)",
+    )
     args = ap.parse_args(argv)
     work = Path(args.work)
     parts = set(args.only.split(","))
@@ -163,8 +168,9 @@ def main(argv: list[str] | None = None) -> int:
         b.run("sync-chunked-x264-2997-c30", src="src 720p", fps="30000/1001")
         for e in hw:
             b.run(f"sync-chunked-{short(e)}-25-c30", src="src 720p", encoder=e)
-        b.run("sync-single-x264-25", src="src 720p", mode="single")
-        b.run("sync-single-x264-2997", src="src 720p", mode="single", fps="30000/1001")
+        if not args.no_single:
+            b.run("sync-single-x264-25", src="src 720p", mode="single")
+            b.run("sync-single-x264-2997", src="src 720p", mode="single", fps="30000/1001")
         b.run("sync-naive-x264-25-c30", src="src 720p", naive=True)
 
     if "reuse" in parts:
@@ -192,8 +198,9 @@ def main(argv: list[str] | None = None) -> int:
                       jobs=j, sync=e == "libx264" and j == 1)  # fmt: skip
             b.run(f"speed-chunked-{short(e)}-25-c30-j1-pa", src="src 1080p", encoder=e,
                   parallel_audio=True, sync=False)  # fmt: skip
-            b.run(f"speed-single-{short(e)}-25", src="src 1080p", encoder=e, mode="single",
-                  sync=False)  # fmt: skip
+            if not args.no_single:
+                b.run(f"speed-single-{short(e)}-25", src="src 1080p", encoder=e, mode="single",
+                      sync=False)  # fmt: skip
 
     path = write_result("s5", f"summary-{b.tag}", {"encoders": encoders, "rows": b.rows})
     print(path)
