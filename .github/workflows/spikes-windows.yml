@@ -1,0 +1,80 @@
+name: Spikes on Windows
+
+# Runs the phase 0 spike benchmarks on a GitHub-hosted Windows runner (CPU only, no GPU,
+# not the reference PC: numbers are functional checks, not decisions) and commits the
+# result JSONs to the ci/spike-results branch so they can be fetched without a token.
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "S5 parts (sync,reuse,eof,speed)"
+        default: "sync,reuse,eof,speed"
+  push:
+    branches: [feat/phase0-spikes]
+    paths:
+      - ".github/workflows/spikes-windows.yml"
+      - "spikes/common/**"
+      - "spikes/s5_export/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: spikes-windows
+  cancel-in-progress: false
+
+jobs:
+  s5:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: ffmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: Install
+        run: python -m pip install -e . numpy
+      - name: Toolchain
+        shell: bash
+        run: |
+          ffmpeg -hide_banner -version | head -1
+          python -c "import platform,os;print(platform.platform(), os.cpu_count())"
+      - name: S5 benchmark
+        shell: bash
+        run: >
+          python -m spikes.s5_export.run_bench
+          --work "$RUNNER_TEMP/s5/Той Студия"
+          --only "${{ github.event.inputs.only || 'sync,reuse,eof,speed' }}"
+      - name: Keep results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s5-windows-results
+          path: spikes/results/s5/*win-*.json
+          if-no-files-found: warn
+      - name: Publish results to ci/spike-results
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/out"
+          cp spikes/results/s5/*win-*.json "$RUNNER_TEMP/out/" 2>/dev/null || { echo "no results"; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch origin ci/spike-results; then
+            git switch -c results FETCH_HEAD
+          else
+            git switch --orphan results
+            git rm -rf --quiet . || true
+          fi
+          dest="s5/${GITHUB_SHA::7}-run${GITHUB_RUN_ID}"
+          mkdir -p "$dest"
+          cp "$RUNNER_TEMP"/out/*.json "$dest/"
+          git add s5
+          git commit -m "results: s5 on windows runner for ${GITHUB_SHA::7} (run ${GITHUB_RUN_ID})"
+          git push origin HEAD:ci/spike-results
