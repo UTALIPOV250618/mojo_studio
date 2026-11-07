@@ -1,0 +1,72 @@
+{
+  "encoders": [
+    "h264_nvenc"
+  ],
+  "rows": [
+    {
+      "run": "speed-chunked-nvenc-25-c30-j1",
+      "result": "win-speed-chunked-nvenc-25-c30-j1-20261107T175814Z.json",
+      "mode": "chunked",
+      "naive": false,
+      "encoder": "h264_nvenc",
+      "fps": "25",
+      "chunk_s": 30.0,
+      "plan": "greedy",
+      "jobs": 1,
+      "parallel_audio": false,
+      "export_s": 114.6,
+      "chunks_s": 96.7,
+      "audio_s": 10.2,
+      "mux_s": 7.7,
+      "chunks_total": 10,
+      "chunks_rendered": 10,
+      "audio_cmdline_chars": 10444
+    },
+    {
+      "run": "speed-chunked-nvenc-25-c30-j2",
+      "result": "win-speed-chunked-nvenc-25-c30-j2-20261107T180030Z.json",
+      "mode": "chunked",
+      "naive": false,
+      "encoder": "h264_nvenc",
+      "fps": "25",
+      "chunk_s": 30.0,
+      "plan": "greedy",
+      "jobs": 2,
+      "parallel_audio": false,
+      "export_s": 129.4,
+      "chunks_s": 111.0,
+      "audio_s": 10.6,
+      "mux_s": 7.7,
+      "chunks_total": 10,
+      "chunks_rendered": 10,
+      "audio_cmdline_chars": 10444
+    },
+    {
+      "run": "speed-chunked-nvenc-25-c30-j1-pa",
+      "result": "win-speed-chunked-nvenc-25-c30-j1-pa-20261107T180215Z.json",
+      "mode": "chunked",
+      "naive": false,
+      "encoder": "h264_nvenc",
+      "fps": "25",
+      "chunk_s": 30.0,
+      "plan": "greedy",
+      "jobs": 1,
+      "parallel_audio": true,
+      "export_s": 99.5,
+      "chunks_s": 91.8,
+      "audio_s": 42.1,
+      "mux_s": 7.6,
+      "chunks_total": 10,
+      "chunks_rendered": 10,
+      "audio_cmdline_chars": 10450
+    }
+  ],
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "ram_bytes": 6287331328,
+    "gpu": "NVIDIA GeForce GTX 1650; AMD Radeon(TM) Graphics"
+  },
+  "ffmpeg_version": "ffmpeg version 7.0.2-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+  "git_rev": "7d01beb-dirty"
+}

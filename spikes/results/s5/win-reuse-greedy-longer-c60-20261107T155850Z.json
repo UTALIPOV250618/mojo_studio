@@ -1,0 +1,88 @@
+{
+  "run": "reuse-greedy-longer-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5-longer.json",
+    "mode": "chunked",
+    "naive": false,
+    "pad": true,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "greedy",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 307598426,
+    "export_duration_us": 307560000,
+    "expected_frames": 7689,
+    "expected_frames_nominal": 7689.96065,
+    "timings": {
+      "chunks_s": 51.707600500201806,
+      "per_chunk_s": [
+        17.094385999953374,
+        17.630205100169405,
+        16.97963449987583
+      ],
+      "audio_s": 10.070617800112814,
+      "video_and_audio_s": 61.778245700057596,
+      "mux_s": 6.04577779979445,
+      "total_s": 67.91783850011416
+    },
+    "chunks_total": 5,
+    "chunks_rendered": 3,
+    "chunks_reused": 2,
+    "chunk_frames": [
+      1562,
+      1537,
+      1508,
+      1551,
+      1531
+    ],
+    "chunk_files": [
+      "3facd2c56c5144528d2f95a8.mp4",
+      "a01e940fec15164d1fe1a6cd.mp4",
+      "ac2ae2d62eb328e4ea0c6f74.mp4",
+      "d82b353a51854f199182e4cc.mp4",
+      "416478c502cd0f0147ce3f1a.mp4"
+    ],
+    "audio_cmdline_chars": 10392
+  },
+  "sync": null,
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "ram_bytes": 6287331328,
+    "gpu": "NVIDIA GeForce GTX 1650; AMD Radeon(TM) Graphics"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "19d54b5-dirty"
+}
