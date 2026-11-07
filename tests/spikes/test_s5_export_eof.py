@@ -19,7 +19,7 @@ def _ffmpeg_major() -> int:
     exe = shutil.which("ffmpeg")
     if exe is None or shutil.which("ffprobe") is None:
         return 0
-    out = subprocess.run([exe, "-version"], capture_output=True, text=True).stdout
+    out = subprocess.run([exe, "-version"], capture_output=True, text=True, check=False).stdout
     m = re.match(r"ffmpeg version n?(\d+)\.", out)
     return int(m.group(1)) if m else 99  # git/master builds: assume new
 
