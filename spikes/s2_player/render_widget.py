@@ -106,6 +106,54 @@ def disable_app_nap(reason: str = "video playback") -> bool:
     return bool(token)
 
 
+def timer_resolution_ms() -> dict[str, float] | None:
+    """Windows: (coarsest, finest, current) system timer resolution in ms."""
+    if sys.platform != "win32":
+        return None
+    try:
+        lo, hi, cur = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.c_ulong()
+        ctypes.WinDLL("ntdll").NtQueryTimerResolution(
+            ctypes.byref(lo), ctypes.byref(hi), ctypes.byref(cur)
+        )
+        return {"coarsest": lo.value / 1e4, "finest": hi.value / 1e4, "current": cur.value / 1e4}
+    except Exception:  # noqa: BLE001 - diagnostics only
+        return None
+
+
+def disable_windows_throttling() -> dict[str, Any] | None:
+    """Windows: opt this process out of power throttling (EcoQoS) and ask for 1 ms
+    timers. Windows 11 throttles processes it considers background (e.g. started
+    from another app): timers coalesce and a player can present only a few frames a
+    second. Analogue of disable_app_nap on macOS. No-op elsewhere."""
+    if sys.platform != "win32":
+        return None
+
+    class PowerThrottlingState(ctypes.Structure):
+        _fields_ = [
+            ("Version", ctypes.c_ulong),
+            ("ControlMask", ctypes.c_ulong),
+            ("StateMask", ctypes.c_ulong),
+        ]
+
+    out: dict[str, Any] = {"timer_before": timer_resolution_ms()}
+    k32 = ctypes.WinDLL("kernel32")
+    k32.GetCurrentProcess.restype = ctypes.c_void_p
+    execution_speed, ignore_timer_resolution = 0x1, 0x4
+    state = PowerThrottlingState(1, execution_speed | ignore_timer_resolution, 0)
+    process_power_throttling = 4
+    out["power_throttling_off"] = bool(
+        k32.SetProcessInformation(
+            ctypes.c_void_p(k32.GetCurrentProcess()),
+            process_power_throttling,
+            ctypes.byref(state),
+            ctypes.sizeof(state),
+        )
+    )
+    out["time_begin_period_1ms"] = ctypes.WinDLL("winmm").timeBeginPeriod(1) == 0
+    out["timer_after"] = timer_resolution_ms()
+    return out
+
+
 class MpvRenderWidget(QOpenGLWidget):
     """mpv drawn by the render API into this widget's FBO."""
 

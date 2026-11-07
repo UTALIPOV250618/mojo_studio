@@ -338,7 +338,10 @@ def step_playback(d: Driver, play_s: float | None, seams_us: list[int]) -> dict[
         else after[k]
         for k in after
     }
+    from spikes.s2_player.render_widget import timer_resolution_ms
+
     out: dict[str, Any] = {
+        "timer_ms": timer_resolution_ms(),
         "played_s": round(m.time_pos or 0.0, 3),
         "hwdec_current": hwdec_now,
         "wall_s": round(wall, 3),
@@ -816,13 +819,22 @@ def run_gui(args: argparse.Namespace, ctx: dict[str, Any]) -> dict[str, Any]:
         k, _, val = kv.partition("=")
         opts[k.replace("-", "_")] = val
 
-    from spikes.s2_player.render_widget import disable_app_nap
+    from spikes.s2_player.render_widget import (
+        disable_app_nap,
+        disable_windows_throttling,
+        timer_resolution_ms,
+    )
 
     if args.mode == "render":
         from spikes.s2_player.render_widget import configure_gl
 
         configure_gl()
     app_nap_disabled = disable_app_nap()
+    win_throttling = (
+        {"skipped": True, "timer": timer_resolution_ms()}
+        if args.no_win_throttle_fix
+        else disable_windows_throttling()
+    )
     app = QApplication.instance() or QApplication(sys.argv[:1])
     if args.mode == "render":
         from spikes.s2_player.render_widget import MpvRenderWidget
@@ -858,6 +870,7 @@ def run_gui(args: argparse.Namespace, ctx: dict[str, Any]) -> dict[str, Any]:
             result["hwdec_current"] = video.mpv._get_property("hwdec-current")
             result["duration_s"] = video.mpv.duration
             result["app_nap_disabled"] = app_nap_disabled
+            result["win_throttling"] = win_throttling
             scr = win.screen()
             result["screen"] = {"refresh_hz": scr.refreshRate(), "dpr": scr.devicePixelRatio()}
             for p in ("display-fps", "estimated-display-fps", "video-sync"):
@@ -1142,6 +1155,11 @@ def main(argv: list[str] | None = None) -> int:
         "--play-after-s", type=float, default=60.0, help="second playback after the seek steps"
     )
     ap.add_argument("--skip-sync", action="store_true", help="skip sync and seam_audio")
+    ap.add_argument(
+        "--no-win-throttle-fix",
+        action="store_true",
+        help="Windows: do not opt out of power throttling / 1 ms timers (for comparison)",
+    )
     ap.add_argument(
         "--only",
         default="",
