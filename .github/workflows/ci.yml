@@ -39,4 +39,7 @@ jobs:
       - name: Import contracts
         run: lint-imports
       - name: Pytest
-        run: pytest -v
+        run: pytest -v --junitxml=pytest-junit.xml
+      - name: Annotate failures
+        if: failure()
+        run: python tools/junit_annotations.py pytest-junit.xml

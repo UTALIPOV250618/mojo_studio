@@ -14,3 +14,4 @@ spikes/data/
 
 # libmpv for the S2 spike on Windows (not committed)
 spikes/s2_player/*.dll
+pytest-junit.xml
