@@ -1,13 +1,15 @@
 """Single-pass decode: proxy + wav + frame metrics from one ffmpeg run."""
 
 import itertools
+import threading
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from tests.media_fixtures import make_clip, needs_ffmpeg
-from toystudio.engine.analysis.single_pass import Stopped, outputs_for, run
+from toystudio.engine.analysis.metrics import FrameReader
+from toystudio.engine.analysis.single_pass import FfmpegFailed, Stopped, outputs_for, run
 from toystudio.engine.media.probe import probe_media
 
 pytestmark = needs_ffmpeg
@@ -31,6 +33,7 @@ def test_single_pass_outputs(tmp_path: Path) -> None:
     assert (p.width, p.height) == (960, 540) and p.fps == 25.0
     assert 15 <= len(m["sharpness"]) <= 17  # 4 fps x 4 s
     assert out.wav.exists() and out.envelope.exists() and out.frames.exists()
+    assert p.has_audio
     assert not list((tmp_path / "cache").rglob("*.part"))
     with np.load(out.frames) as z:
         assert set(z.files) >= {"sharpness", "brightness", "motion", "shake", "histdiff", "t"}
@@ -55,6 +58,7 @@ def test_single_pass_no_audio(tmp_path: Path) -> None:
     out = outputs_for(tmp_path / "cache", 3)
     _run(src, out)
     assert out.proxy.exists() and out.frames.exists()
+    assert not probe_media(out.proxy).has_audio
     assert not out.wav.exists() and not out.envelope.exists()
     assert not list((tmp_path / "cache").rglob("*.part"))
 
@@ -91,3 +95,29 @@ def test_progress_monotonic_and_reaches_duration(tmp_path: Path) -> None:
     assert calls
     assert all(b >= a for a, b in itertools.pairwise(calls))
     assert calls[-1] == pytest.approx(probe_media(src).duration_us / 1e6, abs=0.1)
+
+
+def test_pump_failure_raises_instead_of_hanging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(self, *a, **k):  # type: ignore[no-untyped-def]
+        raise OSError("pipe broke")
+        yield
+
+    monkeypatch.setattr(FrameReader, "chunks", boom)
+    src = make_clip(tmp_path / "h.mp4", duration_s=20)
+    out = outputs_for(tmp_path / "cache", 6)
+    result: list[BaseException] = []
+
+    def target() -> None:
+        try:
+            _run(src, out)
+        except FfmpegFailed as e:
+            result.append(e)
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout=10)
+    assert not t.is_alive(), "run() hung"
+    assert isinstance(result[0], FfmpegFailed)
+    assert not list((tmp_path / "cache").rglob("*.part"))

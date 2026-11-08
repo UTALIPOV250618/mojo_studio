@@ -131,7 +131,10 @@ def build_command(
     cmd += ["-map", "[proxy]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "26"]
     cmd += ["-g", str(gop), "-pix_fmt", "yuv420p", "-color_primaries", "bt709"]
     cmd += ["-color_trc", "bt709", "-colorspace", "bt709", "-movflags", "+faststart"]
-    cmd += ["-metadata:s:v", "rotate=0", "-f", "mp4", str(part_of(out.proxy))]
+    cmd += ["-metadata:s:v", "rotate=0"]
+    if info.has_audio:
+        cmd += ["-map", "0:a:0", "-c:a", "aac", "-ar", "48000", "-b:a", "96k"]
+    cmd += ["-f", "mp4", str(part_of(out.proxy))]
     if info.has_audio:
         cmd += ["-map", "0:a:0", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le"]
         cmd += ["-f", "wav", str(part_of(out.wav))]
@@ -186,12 +189,14 @@ class _Progress:
         self._thread.join(timeout=2)
 
 
-def _pump(reader: FrameReader, q: "queue.Queue[np.ndarray | None]") -> None:
+def _pump(
+    reader: FrameReader, q: "queue.Queue[np.ndarray | None]", errors: list[BaseException]
+) -> None:
     try:
         for chunk in reader.chunks():
             q.put(chunk)
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as e:
+        errors.append(e)
     finally:
         q.put(None)
 
@@ -222,7 +227,10 @@ def run(
     progress = _Progress(proc.stderr)
     mw, mh = metric_size(info.width, info.height)
     q: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=8)
-    pump = threading.Thread(target=_pump, args=(FrameReader(proc.stdout, mw, mh), q), daemon=True)
+    pump_errors: list[BaseException] = []
+    pump = threading.Thread(
+        target=_pump, args=(FrameReader(proc.stdout, mw, mh), q, pump_errors), daemon=True
+    )
     pump.start()
     acc = MetricsAccumulator(fps=METRIC_FPS)
     try:
@@ -244,10 +252,17 @@ def run(
             if cur > done_s and now - last_emit >= PROGRESS_EVERY_S:
                 done_s, last_emit = cur, now
                 on_progress(done_s)
-        rc = proc.wait()
+        if pump_errors:
+            raise FfmpegFailed(f"frame pipe failed: {pump_errors[0]}", "\n".join(progress.tail))
+        while True:  # moov rewrite (+faststart) can take a while: stay stoppable
+            if should_stop():
+                raise Stopped()
+            try:
+                rc = proc.wait(timeout=POLL_S)
+                break
+            except subprocess.TimeoutExpired:
+                pass
         progress.join()
-        if should_stop():
-            raise Stopped()
         if rc != 0:
             tail = "\n".join(progress.tail)
             raise FfmpegFailed(f"ffmpeg exited with code {rc}", tail)
