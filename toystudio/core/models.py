@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 US_PER_S = 1_000_000
 
@@ -93,3 +94,71 @@ class MediaInfo:
     has_video: bool
     bit_rate: int
     creation_time: str | None
+
+
+class StageName(StrEnum):
+    PROBE = "probe"
+    PROXY = "proxy"
+    SPEECH = "speech"
+    SCENES = "scenes"
+    QUALITY = "quality"
+    MOMENTS = "moments"
+    SYNC = "sync"  # project-level stage, stored with media_id = 0
+
+
+STAGE_ORDER: tuple[StageName, ...] = (
+    StageName.PROBE,
+    StageName.PROXY,
+    StageName.SPEECH,
+    StageName.SCENES,
+    StageName.QUALITY,
+    StageName.MOMENTS,
+)
+PROJECT_STAGES: tuple[StageName, ...] = (StageName.SYNC,)
+
+
+class StageState(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    INTERRUPTED = "interrupted"
+
+
+@dataclass(frozen=True)
+class StageRun:
+    media_id: int
+    stage: StageName
+    state: StageState
+    progress: float
+    version: int
+    error_code: str | None
+
+
+class QualityLabel(StrEnum):
+    CLEAR = "clear"
+    DARK = "dark"
+    SHAKY = "shaky"
+    BLURRY = "blurry"
+
+
+@dataclass(frozen=True)
+class QualityInterval:
+    media_id: int
+    start_us: int
+    end_us: int
+    label: QualityLabel
+
+
+@dataclass(frozen=True)
+class MediaRow:
+    id: int
+    kind: MediaKind
+    path: Path
+    copied: bool
+    size: int
+    info: MediaInfo | None
+    status: MediaStatus
+    sync_offset_us: int | None
+    sync_confidence: float | None

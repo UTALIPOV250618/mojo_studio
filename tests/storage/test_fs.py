@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from toystudio.storage.fs import atomic_write
+from toystudio.storage.fs import atomic_write, free_bytes, is_removable
 
 
 def test_atomic_write_no_partial(tmp_path, monkeypatch):
@@ -19,3 +19,11 @@ def test_atomic_write_creates(tmp_path):
     p = tmp_path / "y.bin"
     atomic_write(p, b"data")
     assert p.read_bytes() == b"data"
+
+
+def test_free_bytes_of_missing_dir_uses_parent(tmp_path):
+    assert free_bytes(tmp_path / "no" / "such" / "dir") == free_bytes(tmp_path) > 0
+
+
+def test_is_removable_false_on_tmp(tmp_path):
+    assert is_removable(tmp_path) is False

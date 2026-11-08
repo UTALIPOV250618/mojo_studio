@@ -26,6 +26,11 @@ class AppStore:
                 " root TEXT PRIMARY KEY, name TEXT NOT NULL,"
                 " status TEXT NOT NULL, updated_at TEXT NOT NULL)"
             )
+            self._con.execute(
+                "CREATE TABLE IF NOT EXISTS speed ("
+                " stage TEXT NOT NULL, profile TEXT NOT NULL, x_rt REAL NOT NULL,"
+                " PRIMARY KEY(stage, profile))"
+            )
 
     def register_project(self, root: Path, name: str, status: str, updated_at: datetime) -> None:
         with self._con:
@@ -42,6 +47,27 @@ class AppStore:
             " ORDER BY (status = 'analysis') DESC, updated_at DESC"
         ).fetchall()
         return [ProjectRow(Path(r[0]), r[1], r[2], datetime.fromisoformat(r[3])) for r in rows]
+
+    def set_status(self, root: Path, status: str, updated_at: datetime) -> None:
+        with self._con:
+            self._con.execute(
+                "UPDATE project_list SET status=?, updated_at=? WHERE root=?",
+                (status, updated_at.isoformat(), str(root.resolve())),
+            )
+
+    def speed(self, stage: str, profile: str) -> float | None:
+        row = self._con.execute(
+            "SELECT x_rt FROM speed WHERE stage=? AND profile=?", (stage, profile)
+        ).fetchone()
+        return None if row is None else float(row[0])
+
+    def set_speed(self, stage: str, profile: str, x_rt: float) -> None:
+        with self._con:
+            self._con.execute(
+                "INSERT INTO speed(stage, profile, x_rt) VALUES (?, ?, ?)"
+                " ON CONFLICT(stage, profile) DO UPDATE SET x_rt=excluded.x_rt",
+                (stage, profile, x_rt),
+            )
 
     def close(self) -> None:
         self._con.close()

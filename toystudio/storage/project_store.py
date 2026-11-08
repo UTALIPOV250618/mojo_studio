@@ -4,9 +4,21 @@ import sqlite3
 import uuid
 from datetime import date, datetime
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
-from toystudio.core.models import ToiKind
+from toystudio.core.models import (
+    STAGE_ORDER,
+    MediaInfo,
+    MediaKind,
+    MediaRow,
+    MediaStatus,
+    QualityInterval,
+    QualityLabel,
+    StageName,
+    StageRun,
+    StageState,
+    ToiKind,
+)
 from toystudio.core.timeline import Timeline
 from toystudio.storage.db import connect, migrate
 from toystudio.storage.serde import timeline_from_json, timeline_to_json
@@ -58,6 +70,7 @@ class ProjectStore:
             with con:
                 con.execute("UPDATE project SET schema_version=? WHERE id=1", (version,))
                 con.execute("UPDATE job SET state='interrupted' WHERE state='running'")
+                con.execute("UPDATE stage_run SET state='interrupted' WHERE state='running'")
         except BaseException:
             con.close()
             raise
@@ -126,3 +139,224 @@ class ProjectStore:
         if row is None:
             raise KeyError(job_id)
         return str(row[0])
+
+    # --- media ---
+
+    def add_media(self, path: Path, kind: MediaKind, size: int, copied: bool) -> tuple[int, bool]:
+        resolved = path.resolve()
+        for row in self._con.execute("SELECT id, path, size FROM media").fetchall():
+            other = Path(row[1])
+            if other.resolve() == resolved or (other.name == path.name and row[2] == size):
+                return int(row[0]), False
+        with self._con:
+            cur = self._con.execute(
+                "INSERT INTO media(kind, path, copied, size, added_at) VALUES (?, ?, ?, ?, ?)",
+                (kind.value, str(path), int(copied), size, _now()),
+            )
+        return int(cur.lastrowid or 0), True
+
+    def set_media_info(self, media_id: int, info: MediaInfo) -> None:
+        with self._con:
+            self._con.execute(
+                "UPDATE media SET duration_us=?, width=?, height=?, rotation=?, fps=?, codec=?,"
+                " hdr=?, has_audio=?, has_video=?, bit_rate=?, creation_time=? WHERE id=?",
+                (
+                    info.duration_us,
+                    info.width,
+                    info.height,
+                    info.rotation,
+                    info.fps,
+                    info.codec,
+                    int(info.hdr),
+                    int(info.has_audio),
+                    int(info.has_video),
+                    info.bit_rate,
+                    info.creation_time,
+                    media_id,
+                ),
+            )
+
+    def set_media_status(self, media_id: int, status: MediaStatus) -> None:
+        with self._con:
+            self._con.execute("UPDATE media SET status=? WHERE id=?", (status.value, media_id))
+
+    def set_media_path(self, media_id: int, path: Path, copied: bool) -> None:
+        with self._con:
+            self._con.execute(
+                "UPDATE media SET path=?, copied=? WHERE id=?", (str(path), int(copied), media_id)
+            )
+
+    def list_media(self, kind: MediaKind | None = None) -> list[MediaRow]:
+        sql = (
+            "SELECT id, kind, path, copied, size, duration_us, width, height, rotation, fps,"
+            " codec, hdr, has_audio, has_video, bit_rate, creation_time, status,"
+            " sync_offset_us, sync_confidence FROM media"
+        )
+        args: tuple[str, ...] = ()
+        if kind is not None:
+            sql += " WHERE kind=?"
+            args = (kind.value,)
+        rows = self._con.execute(sql + " ORDER BY id", args).fetchall()
+        out: list[MediaRow] = []
+        for r in rows:
+            info = None
+            if r[5] is not None:
+                info = MediaInfo(
+                    duration_us=int(r[5]),
+                    width=int(r[6] or 0),
+                    height=int(r[7] or 0),
+                    rotation=int(r[8] or 0),
+                    fps=float(r[9] or 0.0),
+                    codec=str(r[10] or ""),
+                    hdr=bool(r[11]),
+                    has_audio=bool(r[12]),
+                    has_video=bool(r[13]),
+                    bit_rate=int(r[14] or 0),
+                    creation_time=r[15],
+                )
+            out.append(
+                MediaRow(
+                    id=int(r[0]),
+                    kind=MediaKind(r[1]),
+                    path=Path(r[2]),
+                    copied=bool(r[3]),
+                    size=int(r[4] or 0),
+                    info=info,
+                    status=MediaStatus(r[16]),
+                    sync_offset_us=r[17],
+                    sync_confidence=r[18],
+                )
+            )
+        return out
+
+    def remove_media(self, media_id: int) -> None:
+        with self._con:
+            # stage_run has no FK (media_id 0 = project stages), so delete explicitly
+            self._con.execute("DELETE FROM stage_run WHERE media_id=?", (media_id,))
+            self._con.execute("DELETE FROM media WHERE id=?", (media_id,))
+
+    # --- stages ---
+
+    def stage(self, media_id: int, stage: StageName) -> StageRun | None:
+        row = self._con.execute(
+            "SELECT media_id, stage, state, progress, version, error_code FROM stage_run"
+            " WHERE media_id=? AND stage=?",
+            (media_id, stage.value),
+        ).fetchone()
+        return None if row is None else _stage_row(row)
+
+    def set_stage(
+        self,
+        media_id: int,
+        stage: StageName,
+        state: StageState,
+        *,
+        progress: float = 0.0,
+        version: int = 1,
+        error_code: str | None = None,
+    ) -> None:
+        finished = state in (StageState.DONE, StageState.FAILED, StageState.SKIPPED)
+        with self._con:
+            self._con.execute(
+                "INSERT INTO stage_run(media_id, stage, state, progress, error_code, finished_at,"
+                " version) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT(media_id, stage) DO UPDATE SET state=excluded.state,"
+                " progress=excluded.progress, error_code=excluded.error_code,"
+                " finished_at=excluded.finished_at, version=excluded.version",
+                (
+                    media_id,
+                    stage.value,
+                    state.value,
+                    progress,
+                    error_code,
+                    _now() if finished else None,
+                    version,
+                ),
+            )
+
+    def stages(self) -> list[StageRun]:
+        rows = self._con.execute(
+            "SELECT media_id, stage, state, progress, version, error_code FROM stage_run"
+            " ORDER BY media_id, stage"
+        ).fetchall()
+        return [_stage_row(r) for r in rows]
+
+    # --- analysis results ---
+
+    def replace_scene_cuts(self, media_id: int, cuts_us: list[int], scores: list[float]) -> None:
+        if len(cuts_us) != len(scores):
+            raise ValueError("cuts_us and scores must have the same length")
+        with self._con:
+            self._con.execute("DELETE FROM scene_cut WHERE media_id=?", (media_id,))
+            self._con.executemany(
+                "INSERT INTO scene_cut(media_id, at_us, score) VALUES (?, ?, ?)",
+                [(media_id, c, s) for c, s in zip(cuts_us, scores, strict=True)],
+            )
+
+    def scene_cut_count(self, media_id: int | None = None) -> int:
+        if media_id is None:
+            row = self._con.execute("SELECT COUNT(*) FROM scene_cut").fetchone()
+        else:
+            row = self._con.execute(
+                "SELECT COUNT(*) FROM scene_cut WHERE media_id=?", (media_id,)
+            ).fetchone()
+        return int(row[0])
+
+    def replace_quality(self, media_id: int, intervals: list[QualityInterval]) -> None:
+        """Store problem intervals; CLEAR is the absence of a row and is not persisted."""
+        with self._con:
+            self._con.execute("DELETE FROM quality_interval WHERE media_id=?", (media_id,))
+            self._con.executemany(
+                "INSERT INTO quality_interval(media_id, start_us, end_us, label)"
+                " VALUES (?, ?, ?, ?)",
+                [
+                    (media_id, i.start_us, i.end_us, i.label.value)
+                    for i in intervals
+                    if i.label is not QualityLabel.CLEAR
+                ],
+            )
+
+    def quality_intervals(self, media_id: int) -> list[QualityInterval]:
+        rows = self._con.execute(
+            "SELECT media_id, start_us, end_us, label FROM quality_interval"
+            " WHERE media_id=? ORDER BY start_us",
+            (media_id,),
+        ).fetchall()
+        return [QualityInterval(int(r[0]), int(r[1]), int(r[2]), QualityLabel(r[3])) for r in rows]
+
+    def set_sync(self, media_id: int, offset_us: int | None, confidence: float | None) -> None:
+        with self._con:
+            self._con.execute(
+                "UPDATE media SET sync_offset_us=?, sync_confidence=? WHERE id=?",
+                (offset_us, confidence, media_id),
+            )
+
+    # --- wizard step ---
+
+    def step(self) -> Literal["files", "analysis", "analysis_done"]:
+        videos = self.list_media(MediaKind.VIDEO)
+        if not videos:
+            return "files"
+        finished = (StageState.DONE, StageState.SKIPPED)
+        for m in videos:
+            if m.status is not MediaStatus.OK:
+                continue
+            for st in STAGE_ORDER:
+                run = self.stage(m.id, st)
+                if run is None or run.state not in finished:
+                    return "analysis"
+        sync = self.stage(0, StageName.SYNC)
+        if sync is None or sync.state not in finished:
+            return "analysis"
+        return "analysis_done"
+
+
+def _stage_row(r: tuple[object, ...]) -> StageRun:
+    return StageRun(
+        media_id=int(str(r[0])),
+        stage=StageName(str(r[1])),
+        state=StageState(str(r[2])),
+        progress=float(str(r[3] or 0.0)),
+        version=int(str(r[4] or 1)),
+        error_code=None if r[5] is None else str(r[5]),
+    )
