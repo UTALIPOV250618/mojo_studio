@@ -1,5 +1,8 @@
 """Human-readable formatting for RU/KY UI."""
 
+import math
+from typing import Literal
+
 from toystudio.core.models import US_PER_S
 
 _GB = 1024**3
@@ -36,3 +39,26 @@ def format_duration_words(us: int, lang: str) -> str:
     if minutes or not hours:
         parts.append(f"{minutes} {m_unit}")
     return " ".join(parts)
+
+
+# ETA hour unit follows the brief ("дагы ~2 с"), which differs from _UNITS["ky"].
+_ETA_TEXT: dict[str, tuple[str, str, str, str]] = {
+    # (under a minute, prefix, minute unit, hour unit)
+    "ru": ("меньше минуты", "ещё ~", "мин", "ч"),
+    "ky": ("бир мүнөткө жетпей", "дагы ~", "мүн", "с"),
+}
+
+
+def format_eta(seconds: float, lang: Literal["ru", "ky"]) -> str:
+    if lang not in _ETA_TEXT:
+        raise ValueError(f"unsupported language: {lang}")
+    under_minute, prefix, m_unit, h_unit = _ETA_TEXT[lang]
+    if seconds < 60:
+        return under_minute
+    minutes = math.ceil(seconds / 60)
+    if minutes < 60:
+        return f"{prefix}{minutes} {m_unit}"
+    hours, rest = divmod(minutes, 60)
+    if rest == 0:
+        return f"{prefix}{hours} {h_unit}"
+    return f"{prefix}{hours} {h_unit} {rest} {m_unit}"

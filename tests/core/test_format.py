@@ -1,6 +1,11 @@
 import pytest
 
-from toystudio.core.format import format_duration_words, format_size, format_timecode
+from toystudio.core.format import (
+    format_duration_words,
+    format_eta,
+    format_size,
+    format_timecode,
+)
 
 
 def test_timecode_hours() -> None:
@@ -35,3 +40,14 @@ def test_duration_words_partial() -> None:
 def test_duration_words_unknown_lang() -> None:
     with pytest.raises(ValueError):
         format_duration_words(1, "xx")
+
+
+def test_format_eta() -> None:
+    assert format_eta(30, "ru") == "меньше минуты"
+    assert format_eta(22 * 60 + 1, "ru") == "ещё ~23 мин"
+    assert format_eta(70 * 60, "ru") == "ещё ~1 ч 10 мин"
+    assert format_eta(2 * 3600, "ru") == "ещё ~2 ч"
+    assert format_eta(22 * 60 + 1, "ky") == "дагы ~23 мүн"
+    assert format_eta(30, "ky") == "бир мүнөткө жетпей"
+    assert format_eta(2 * 3600, "ky") == "дагы ~2 с"
+    assert format_eta(70 * 60, "ky") == "дагы ~1 с 10 мүн"
