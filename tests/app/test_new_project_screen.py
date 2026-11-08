@@ -201,8 +201,9 @@ def test_disk_check_counts_copy_and_recovers(vm, jobs, tmp_path, monkeypatch):
     media_done(vm, jobs, "a.mp4")
     finish_import(vm, jobs)
     without = vm.disk_check().needed
-    vm.copy = True  # already imported in place: nothing more to copy
-    assert vm.disk_check().needed == without
+    size = vm._store.list_media()[0].size
+    vm.copy = True  # the probed row will now be copied too
+    assert vm.disk_check().needed == without + size
     vm.add_files(MediaKind.VIDEO, [make_file(tmp_path, "b.mp4", 5000)])
     assert vm.disk_check().needed > without + 5000 - 1
 
@@ -216,16 +217,50 @@ def test_removable_turns_copy_on(vm, jobs, tmp_path, monkeypatch):
     assert vm._store.list_media()[0].copied is True
 
 
-def test_copy_toggle_applies_to_unprocessed_rows_only(vm, jobs, tmp_path):
+def test_copy_toggle_flips_probed_rows_and_reruns_import(vm, jobs, tmp_path):
     vm.add_files(MediaKind.VIDEO, [make_file(tmp_path, "a.mp4")])
     media_done(vm, jobs, "a.mp4")
-    vm.add_files(MediaKind.VIDEO, [make_file(tmp_path, "b.mp4")])
+    finish_import(vm, jobs)
+    assert len(jobs.started) == 1
     vm.copy = True
-    flags = {m.path.name: m.copied for m in vm._store.list_media()}
-    assert flags == {"a.mp4": False, "b.mp4": True}
+    assert [m.copied for m in vm._store.list_media()] == [True]
+    assert len(jobs.started) == 2  # import started again to copy the probed row
+    finish_import(vm, jobs)
     vm.copy = False
-    flags = {m.path.name: m.copied for m in vm._store.list_media()}
-    assert flags == {"a.mp4": False, "b.mp4": False}
+    assert [m.copied for m in vm._store.list_media()] == [False]
+
+
+def test_copy_toggle_keeps_finished_copies(vm, jobs, tmp_path):
+    vm.add_files(MediaKind.VIDEO, [make_file(tmp_path, "a.mp4")])
+    row = vm._store.list_media()[0]
+    inside = vm.root / "media" / "a.mp4"
+    inside.parent.mkdir(exist_ok=True)
+    inside.write_bytes(b"x")
+    vm._store.set_media_path(row.id, inside, copied=True)
+    finish_import(vm, jobs)
+    vm.copy = True
+    vm.copy = False
+    assert [m.copied for m in vm._store.list_media()] == [True]
+
+
+def test_failed_import_blocks_start_and_can_retry(vm, jobs, tmp_path):
+    vm.add_files(MediaKind.VIDEO, [make_file(tmp_path, "a.mp4"), make_file(tmp_path, "b.mp4")])
+    media_done(vm, jobs, "a.mp4")
+    jobs.failed.emit(import_id(vm), "crashed", "boom")
+    assert vm.banner_key == "import_failed"
+    assert vm.import_failure == ("crashed", "boom")
+    assert vm.can_start is False  # b.mp4 was never checked
+    vm.retry_import()
+    assert len(jobs.started) == 2 and vm.import_failure is None
+    media_done(vm, jobs, "b.mp4")
+    finish_import(vm, jobs)
+    assert vm.can_start is True
+
+
+def test_cancelled_import_is_not_an_error(vm, jobs, tmp_path):
+    vm.add_files(MediaKind.VIDEO, [make_file(tmp_path, "a.mp4")])
+    jobs.failed.emit(import_id(vm), "cancelled", "")
+    assert vm.import_failure is None
 
 
 def test_copy_progress_event_shows_percent(vm, jobs, tmp_path):
@@ -416,10 +451,7 @@ def test_screen_disk_banner_text_and_actions(qtbot, vm, jobs, tmp_path, monkeypa
     vm.recheck()
     assert s.error_banner.isVisible()
     assert "не хватает места — нужно ещё" in s.error_banner._title.text()
-    assert [b.text() for b in s.error_banner.action_buttons()] == [
-        "Выбрать папку",
-        "Проверить снова",
-    ]
+    assert [b.text() for b in s.error_banner.action_buttons()] == ["Проверить снова"]
     assert not s.start_button.isEnabled()
 
 

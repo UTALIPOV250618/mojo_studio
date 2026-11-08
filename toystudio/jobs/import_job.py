@@ -79,6 +79,13 @@ def import_one(ctx: JobContext, store: ProjectStore, row: MediaRow) -> None:
         path = dst
     if ctx.should_stop():
         raise Stopped()
+    if row.info is not None:  # already probed: only the copy was missing
+        ctx.report(
+            Event(
+                "media", {"media_id": row.id, "status": "ok", "duration_us": row.info.duration_us}
+            )
+        )
+        return
     try:
         info = probe_media(path) if check_integrity(path) else None
     except ValueError:
@@ -93,11 +100,15 @@ def import_one(ctx: JobContext, store: ProjectStore, row: MediaRow) -> None:
     )
 
 
+def _needs_copy(row: MediaRow, store: ProjectStore) -> bool:
+    return row.copied and not _inside(row.path, store.root / MEDIA_DIR)
+
+
 def run(ctx: JobContext) -> None:
     store = ProjectStore.open(Path(ctx.project))
     try:
         for row in store.list_media():
-            if row.status is MediaStatus.OK and row.info is None:
+            if row.status is MediaStatus.OK and (row.info is None or _needs_copy(row, store)):
                 if ctx.should_stop():
                     raise Stopped()
                 import_one(ctx, store, row)

@@ -151,7 +151,7 @@ class NewProjectScreen(QWidget):
         vm.banner.connect(lambda _key: self._update_banner())
         vm.can_start_changed.connect(self.start_button.setEnabled)
         vm.warning_4k.connect(lambda _on: self._update_info_banner())
-        vm.copy_changed.connect(lambda _on: self._sync_copy())
+        vm.copy_changed.connect(lambda _on: (self._sync_copy(), self._update_banner()))
         vm.date_changed.connect(self._on_vm_date)
         self.retranslate()
 
@@ -161,6 +161,7 @@ class NewProjectScreen(QWidget):
         self._has_files = bool(self.vm.rows(MediaKind.VIDEO) or self.vm.rows(MediaKind.MUSIC))
         self._sync_copy()
         self._update_disk_label()
+        self._update_banner()
 
     def _on_disk(self, disk: DiskCheck) -> None:
         self._disk = disk
@@ -213,13 +214,32 @@ class NewProjectScreen(QWidget):
                     "NewProjectScreen", "На диске не хватает места — нужно ещё %1."
                 )
                 title = title.replace("%1", shortage)
-            body = QCoreApplication.translate(
-                "NewProjectScreen", "Освободите место или выберите другую папку для копии."
-            )
-            actions = [
-                ("choose_folder", QCoreApplication.translate("NewProjectScreen", "Выбрать папку")),
-                ("recheck", QCoreApplication.translate("NewProjectScreen", "Проверить снова")),
-            ]
+            recheck = ("recheck", QCoreApplication.translate("NewProjectScreen", "Проверить снова"))
+            if self.vm.root is None:
+                body = QCoreApplication.translate(
+                    "NewProjectScreen", "Освободите место или выберите другую папку для копии."
+                )
+                choose = QCoreApplication.translate("NewProjectScreen", "Выбрать папку")
+                actions = [("choose_folder", choose), recheck]
+            else:
+                body = QCoreApplication.translate(
+                    "NewProjectScreen", "Освободите место или не копируйте файлы в папку проекта."
+                )
+                actions = [recheck]
+                if self.vm.copy:
+                    no_copy = QCoreApplication.translate("NewProjectScreen", "Не копировать")
+                    actions.insert(0, ("no_copy", no_copy))
+            self.error_banner.set_content(title, body, actions)
+            self.error_banner.show()
+            return
+        elif key == "import_failed" and self.vm.import_failure is not None:
+            code, detail = self.vm.import_failure
+            title = QCoreApplication.translate("NewProjectScreen", "Не удалось проверить файлы.")
+            body = QCoreApplication.translate("NewProjectScreen", "Попробуйте ещё раз.")
+            actions = [("retry", QCoreApplication.translate("NewProjectScreen", "Повторить"))]
+            self.error_banner.set_content(title, body, actions, f"{code}: {detail}".strip(": "))
+            self.error_banner.show()
+            return
         elif key == "corrupt":
             title = QCoreApplication.translate(
                 "NewProjectScreen",
@@ -258,6 +278,10 @@ class NewProjectScreen(QWidget):
             self.vm.recheck()
         elif key == "choose_folder":
             self._choose_folder()
+        elif key == "no_copy":
+            self.vm.copy = False
+        elif key == "retry":
+            self.vm.retry_import()
         elif key == "continue":
             self.vm.exclude_bad()
         elif key == "replace":

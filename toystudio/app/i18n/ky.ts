@@ -109,129 +109,159 @@
 <context>
     <name>NewProjectScreen</name>
     <message>
-        <location filename="../screens/new_project.py" line="191"/>
+        <location filename="../screens/new_project.py" line="192"/>
         <source>На диске %1 свободно %2, нужно ~%3</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">%1 дискинде %2 бош орун бар, ~%3 керек</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="195"/>
+        <location filename="../screens/new_project.py" line="196"/>
         <source>На диске: свободно %1, нужно ~%2</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Дискте %1 бош, ~%2 керек</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="207"/>
+        <location filename="../screens/new_project.py" line="208"/>
         <source>На диске %1 не хватает места — нужно ещё %2.</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">%1 дискинде орун жетишпейт — дагы %2 керек.</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="212"/>
+        <location filename="../screens/new_project.py" line="213"/>
         <source>На диске не хватает места — нужно ещё %1.</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Дискте орун жетишпейт — дагы %1 керек.</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="216"/>
+        <location filename="../screens/new_project.py" line="219"/>
         <source>Освободите место или выберите другую папку для копии.</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Орун бошотуңуз же көчүрмө үчүн башка папканы тандаңыз.</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="220"/>
-        <location filename="../screens/new_project.py" line="271"/>
+        <location filename="../screens/new_project.py" line="222"/>
+        <location filename="../screens/new_project.py" line="295"/>
         <source>Выбрать папку</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Папканы тандоо</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="221"/>
+        <location filename="../screens/new_project.py" line="217"/>
         <source>Проверить снова</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Кайра текшерүү</translation>
+    </message>
+    <message>
+        <location filename="../screens/new_project.py" line="225"/>
+        <source>Освободите место или не копируйте файлы в папку проекта.</source>
+        <translation type="unfinished">Орун бошотуңуз же файлдарды долбоор папкасына көчүрбөңүз.</translation>
         <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="224"/>
+        <location filename="../screens/new_project.py" line="230"/>
+        <source>Не копировать</source>
+        <translation type="unfinished">Көчүрбөө</translation>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+    </message>
+    <message>
+        <location filename="../screens/new_project.py" line="237"/>
+        <source>Не удалось проверить файлы.</source>
+        <translation type="unfinished">Файлдарды текшерүү мүмкүн болгон жок.</translation>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+    </message>
+    <message>
+        <location filename="../screens/new_project.py" line="238"/>
+        <source>Попробуйте ещё раз.</source>
+        <translation type="unfinished">Дагы бир жолу аракет кылыңыз.</translation>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+    </message>
+    <message>
+        <location filename="../screens/new_project.py" line="239"/>
+        <source>Повторить</source>
+        <translation type="unfinished">Кайталоо</translation>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+    </message>
+    <message>
+        <location filename="../screens/new_project.py" line="244"/>
         <source>Файл %1 не читается — возможно, он повреждён или скопирован не до конца.</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">%1 файлы окулбайт — ал бузулган же толук көчүрүлбөгөн болушу мүмкүн.</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="228"/>
+        <location filename="../screens/new_project.py" line="248"/>
         <source>Остальные файлы проанализируем без него.</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Калган файлдарды ансыз талдайбыз.</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="232"/>
+        <location filename="../screens/new_project.py" line="252"/>
         <source>Продолжить без него</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Ансыз улантуу</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="233"/>
-        <location filename="../screens/new_project.py" line="280"/>
+        <location filename="../screens/new_project.py" line="253"/>
+        <location filename="../screens/new_project.py" line="304"/>
         <source>Заменить файл</source>
-        <translation type="unfinished">Файлды алмаштыруу</translation>
         <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Файлды алмаштыруу</translation>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="245"/>
+        <location filename="../screens/new_project.py" line="265"/>
         <source>ru</source>
         <translation type="unfinished">ky</translation>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="247"/>
+        <location filename="../screens/new_project.py" line="267"/>
         <source>Видео 4K анализируется долго — около %1 на этом компьютере. Можно уйти: мы пришлём уведомление.</source>
-        <translation type="unfinished">4K видео узак талданат — бул компьютерде болжол менен %1. Кете берсеңиз болот: билдирме жиберебиз.</translation>
         <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">4K видео узак талданат — бул компьютерде болжол менен %1. Кете берсеңиз болот: билдирме жиберебиз.</translation>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="289"/>
+        <location filename="../screens/new_project.py" line="313"/>
         <source>Новый проект</source>
         <translation type="unfinished">Жаңы долбоор</translation>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="290"/>
+        <location filename="../screens/new_project.py" line="314"/>
         <source>Название</source>
         <translation type="unfinished">Аталышы</translation>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="292"/>
+        <location filename="../screens/new_project.py" line="316"/>
         <source>Свадьба Айбек и Нурайым</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Айбек менен Нурайымдын үйлөнүү тою</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="294"/>
+        <location filename="../screens/new_project.py" line="318"/>
         <source>Дата</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Күнү</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="295"/>
+        <location filename="../screens/new_project.py" line="319"/>
         <source>Тип</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Түрү</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="299"/>
+        <location filename="../screens/new_project.py" line="323"/>
         <source>Копировать файлы в папку проекта</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Файлдарды долбоор папкасына көчүрүү</translation>
-        <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="302"/>
+        <location filename="../screens/new_project.py" line="326"/>
         <source>Файлы на флешке — лучше скопировать</source>
-        <translation type="unfinished">Файлдар флешкада — көчүргөн жакшы</translation>
         <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Файлдар флешкада — көчүргөн жакшы</translation>
     </message>
     <message>
-        <location filename="../screens/new_project.py" line="304"/>
+        <location filename="../screens/new_project.py" line="328"/>
         <source>Начать анализ</source>
-        <translation type="unfinished">Талдоону баштоо</translation>
         <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Талдоону баштоо</translation>
     </message>
 </context>
 <context>

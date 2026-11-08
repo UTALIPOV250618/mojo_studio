@@ -103,6 +103,7 @@ class NewProjectVM(QObject):
         self._disk = DiskCheck(0, 0, "", True)
         self._can_start = False
         self.banner_key: str | None = None
+        self.import_failure: tuple[str, str] | None = None
         self.corrupt_name: str | None = None
         self.warning_4k_active = False
         self.eta_4k_s = 0.0
@@ -154,24 +155,33 @@ class NewProjectVM(QObject):
         if self._store is not None:
             self._store.update_details(self._kind, self._date)
 
-    def _set_copy(self, value: bool) -> None:
+    def _set_copy(self, value: bool, start: bool = True) -> bool:
+        """Switch copy mode; returns True when existing rows were flipped (an import is due)."""
         changed = value != self._copy
         self._copy = value
         if not value:
             self.removable_hint = False
+        flipped = False
         if changed:
             self.copy_changed.emit(value)
-            if self._apply_copy_to_unprocessed() and self._import_active:
-                self._rerun = True
+            flipped = self._apply_copy_to_rows()
+            if flipped and start:
+                self._start_import()
         self._refresh()
+        return flipped
 
-    def _apply_copy_to_unprocessed(self) -> bool:
-        """Rows the worker has not touched yet follow the toggle; imported rows stay as they are."""
-        if self._store is None:
+    def _apply_copy_to_rows(self) -> bool:
+        """Rows not yet inside <root>/media follow the toggle; finished copies stay."""
+        if self._store is None or self.root is None:
             return False
+        media_dir = self.root / MEDIA_DIR
         changed = False
         for m in self._store.list_media():
-            if m.status is MediaStatus.OK and m.info is None and m.copied != self._copy:
+            if (
+                m.status is MediaStatus.OK
+                and m.copied != self._copy
+                and not _inside(m.path, media_dir)
+            ):
                 self._store.set_media_path(m.id, m.path, self._copy)
                 changed = True
         return changed
@@ -194,11 +204,12 @@ class NewProjectVM(QObject):
         files = [p for p in paths if p.is_file()]
         if not files:
             return
+        added = False
         if any(is_removable(p) for p in files):
             self.removable_hint = True
-            self._set_copy(True)
+            if self._set_copy(True, start=False):
+                added = True
         store = self._ensure_project()
-        added = False
         for p in files:
             try:
                 size = p.stat().st_size
@@ -293,6 +304,7 @@ class NewProjectVM(QObject):
         argv = worker_argv(
             "import", self.root, self._import_id(), app_db=self._app.path, stop_file=stop
         )
+        self.import_failure = None
         self._import_active = True
         try:
             self._jobs.start(self._import_id(), argv)
@@ -332,7 +344,14 @@ class NewProjectVM(QObject):
             self._refresh()
 
     def _on_job_failed(self, job_id: str, code: str, detail: str) -> None:
+        if self.root is None or job_id != self._import_id():
+            return
+        if code != "cancelled":
+            self.import_failure = (code, detail)
         self._on_job_end(job_id)
+
+    def retry_import(self) -> None:
+        self._start_import()
 
     def start_analysis(self) -> None:
         if not self._can_start or self.root is None:
@@ -410,7 +429,15 @@ class NewProjectVM(QObject):
             self.disk_changed.emit(disk)
         bad = self._bad_media()
         self.corrupt_name = bad[0].path.name if bad else None
-        key = "disk" if not disk.ok else "corrupt" if bad else None
+        key = (
+            "disk"
+            if not disk.ok
+            else "import_failed"
+            if self.import_failure is not None
+            else "corrupt"
+            if bad
+            else None
+        )
         if key != self.banner_key or force:
             self.banner_key = key
             self.banner.emit(key)
@@ -430,7 +457,20 @@ class NewProjectVM(QObject):
         if warn != self.warning_4k_active:
             self.warning_4k_active = warn
             self.warning_4k.emit(warn)
-        can = bool(ready) and not self._import_active and not self._rerun and disk.ok
+        unchecked = any(
+            m.kind is MediaKind.VIDEO
+            and m.status is MediaStatus.OK
+            and m.info is None
+            and m.id not in self._excluded
+            for m in self._media
+        )
+        can = (
+            bool(ready)
+            and not unchecked
+            and not self._import_active
+            and not self._rerun
+            and disk.ok
+        )
         if can != self._can_start:
             self._can_start = can
             self.can_start_changed.emit(can)

@@ -88,3 +88,25 @@ def test_import_marks_corrupt_and_missing(tmp_path: Path) -> None:
     media = {e["media_id"]: e["status"] for e in events(msgs, "media")}
     assert media == {id_good: "ok", id_bad: "corrupt", id_gone: "missing"}
     assert not (root / "media" / "пропал.mp4").exists()
+
+
+def test_import_copies_already_probed_row_when_copy_requested_later(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    src = make_clip(tmp_path / "Камера" / "клип.mp4", duration_s=2, size="320x180")
+    mid = _add(root, src, copied=False)
+    run_worker("import", root, app_db=tmp_path / "app.db", msgs=[]).close()
+    s = ProjectStore.open(root)
+    before = s.list_media()[0]
+    s.set_media_path(mid, before.path, copied=True)  # the user ticks "copy" afterwards
+    s.close()
+
+    msgs: list = []
+    s = run_worker("import", root, app_db=tmp_path / "app.db", msgs=msgs)
+    try:
+        row = s.list_media()[0]
+    finally:
+        s.close()
+    assert row.path == root / "media" / "клип.mp4" and row.copied
+    assert row.path.read_bytes() == src.read_bytes()
+    assert row.info == before.info and row.status is MediaStatus.OK
+    assert [e for e in events(msgs, "copy") if e["media_id"] == mid]
