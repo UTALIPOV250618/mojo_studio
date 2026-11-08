@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 import time
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -135,6 +137,13 @@ class _Run:
                 self.store.set_stage(media_id, stage, StageState.INTERRUPTED)
                 self.stage_event(media_id, stage, StageState.INTERRUPTED)
                 raise
+            except _SkipFile:
+                raise
+            except Exception:  # noqa: BLE001 - one bad file must not stop the others
+                traceback.print_exc(file=sys.stderr)
+                self.proxy_left_s.pop(media_id, None)
+                self.finish(media_id, stage, StageState.FAILED, error_code="error")
+                raise _SkipFile() from None
 
     def run_stage(self, row: MediaRow, stage: StageName) -> None:
         out = outputs_for(self.cache, row.id)

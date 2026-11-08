@@ -341,10 +341,11 @@ class ProjectStore:
         for m in videos:
             if m.status is not MediaStatus.OK:
                 continue
-            for st in STAGE_ORDER:
-                run = self.stage(m.id, st)
-                if run is None or run.state not in finished:
-                    return "analysis"
+            runs = [self.stage(m.id, st) for st in STAGE_ORDER]
+            if any(r is not None and r.state is StageState.FAILED for r in runs):
+                continue  # ruling R9: a failed file is finished; it is retried on rerun
+            if any(r is None or r.state not in finished for r in runs):
+                return "analysis"
         sync = self.stage(0, StageName.SYNC)
         if sync is None or sync.state not in finished:
             return "analysis"

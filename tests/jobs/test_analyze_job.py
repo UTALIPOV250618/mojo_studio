@@ -14,7 +14,9 @@ from toystudio.core.models import (
     ToiKind,
 )
 from toystudio.engine.media.probe import probe_media
+from toystudio.jobs import analyze_job
 from toystudio.jobs.protocol import Done, Failed, Progress
+from toystudio.jobs.worker_main import JobContext
 from toystudio.storage.app_store import AppStore
 from toystudio.storage.project_store import ProjectStore
 
@@ -109,6 +111,7 @@ def test_analyze_continues_after_corrupt(tmp_path: Path) -> None:
         assert proxy2.state is StageState.FAILED and proxy2.error_code == "ffmpeg"
         assert all(s.stage(3, st).state in FINISHED for st in STAGE_ORDER)
         assert s.stage(0, StageName.SYNC).state is StageState.DONE
+        assert s.step() == "analysis_done"  # ruling R9: a failed file is finished
     finally:
         s.close()
     assert {"media_id": 1, "status": "corrupt"} in events(msgs, "media")
@@ -220,3 +223,58 @@ def test_analyze_stop_file_interrupts_stage(tmp_path: Path) -> None:
     stop.unlink()  # "Продолжить": the same job runs again and finishes
     rc, msgs, _err = run_raw("analyze", project, app_db=tmp_path / "app.db", stop_file=stop)
     assert rc == 0 and isinstance(msgs[-1], Done)
+
+
+class _Ctx(JobContext):
+    """In-process context that collects messages instead of writing stdout."""
+
+    def __init__(self, project: Path, app_db: Path) -> None:
+        super().__init__(str(project), "in-process", None, app_db)
+        self.msgs: list = []
+
+    def report(self, msg) -> None:  # type: ignore[no-untyped-def]
+        self.msgs.append(msg)
+
+
+def test_analyze_unexpected_error_fails_only_that_file(tmp_path: Path, monkeypatch) -> None:
+    project = _project(tmp_path, _clip(tmp_path, "первый.mp4", 2), _clip(tmp_path, "второй.mp4", 3))
+    real = analyze_job.detect_cuts
+    calls = []
+
+    def flaky(m, fps=4.0):  # type: ignore[no-untyped-def]
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("bad metrics")
+        return real(m, fps=fps)
+
+    monkeypatch.setattr(analyze_job, "detect_cuts", flaky)
+    ctx = _Ctx(project, tmp_path / "app.db")
+    rc = worker_main_run(ctx)
+    assert rc == 0 and isinstance(ctx.msgs[-1], Done)
+    s = ProjectStore.open(project)
+    try:
+        scenes1 = s.stage(1, StageName.SCENES)
+        assert scenes1.state is StageState.FAILED and scenes1.error_code == "error"
+        assert s.stage(1, StageName.QUALITY).state is StageState.PENDING
+        assert all(s.stage(2, st).state in FINISHED for st in STAGE_ORDER)
+        assert s.stage(0, StageName.SYNC).state is StageState.DONE
+        assert s.step() == "analysis_done"
+    finally:
+        s.close()
+    assert any(
+        e["media_id"] == 1 and e["stage"] == "scenes" and e["state"] == "failed"
+        for e in events(ctx.msgs, "stage")
+    )
+
+
+def worker_main_run(ctx: JobContext) -> int:
+    """worker_main.main's job wrapper (Stopped / exception / Done) around analyze_job.run."""
+    from toystudio.jobs.protocol import Failed as _Failed
+
+    try:
+        analyze_job.run(ctx)
+    except Exception as e:  # noqa: BLE001
+        ctx.report(_Failed("exception", repr(e)))
+        return 1
+    ctx.report(Done())
+    return 0

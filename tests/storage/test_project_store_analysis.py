@@ -162,3 +162,17 @@ def test_app_store_speed_and_status(tmp_path):
     a.register_project(root, "n", "files", datetime(2026, 1, 1))
     a.set_status(root, "analysis", datetime(2026, 1, 2))
     assert a.list_projects()[0].status == "analysis"
+
+
+def test_failed_stage_counts_as_finished(tmp_path):
+    # ruling R9: a file with a FAILED stage is finished for the wizard (retry is on rerun)
+    s = new_store(tmp_path)
+    failed = add_video(s, tmp_path, "failed.MP4")
+    good = add_video(s, tmp_path, "good.MP4")
+    s.set_stage(failed, StageName.PROBE, StageState.DONE)
+    s.set_stage(failed, StageName.PROXY, StageState.FAILED, error_code="ffmpeg")
+    finish_all(s, good)
+    s.set_stage(0, StageName.SYNC, StageState.DONE)
+    assert s.step() == "analysis_done"
+    s.set_stage(failed, StageName.PROXY, StageState.INTERRUPTED)
+    assert s.step() == "analysis"
