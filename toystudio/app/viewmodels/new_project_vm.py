@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import ntpath
 import re
+import sqlite3
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -107,6 +108,8 @@ class NewProjectVM(QObject):
         self.corrupt_name: str | None = None
         self.warning_4k_active = False
         self.eta_4k_s = 0.0
+        self._queued: list[tuple[MediaKind, list[Path]]] = []
+        self._closed = False
         jobs.event.connect(self._on_event)
         jobs.finished.connect(self._on_job_end)
         jobs.failed.connect(self._on_job_failed)
@@ -200,6 +203,9 @@ class NewProjectVM(QObject):
 
     # ---- files
     def add_files(self, kind: MediaKind, paths: list[Path]) -> None:
+        if self.root is not None and self._store is None:  # attached read-only: a worker runs
+            self._queued.append((kind, list(paths)))
+            return
         self._dups = {k: [] for k in MediaKind}
         files = [p for p in paths if p.is_file()]
         if not files:
@@ -280,11 +286,63 @@ class NewProjectVM(QObject):
         folder = self._folder_for()
         name = self._name.strip() or folder.name
         self._store = ProjectStore.create(folder, name, self._kind, self._date)
-        self.root = folder
+        self.root = folder.resolve()  # job ids and the project list use resolved roots
         self._app.register_project(folder, name, self._status, datetime.now())
         return self._store
 
+    def attach(self, root: Path) -> None:
+        """Show an existing project on screen 2.
+
+        ProjectStore.open() flips a running worker's stages to interrupted (rulings R11/R17),
+        so while an import or analysis of this project runs the VM only reads project.db
+        (open_readonly on every refresh) and opens it for writing once the job ends.
+        """
+        if self.root is not None:
+            raise RuntimeError("the view-model already has a project")
+        summary = ProjectStore.peek(root)
+        self.root = root
+        self._name, self._kind = summary.name, summary.kind
+        self._date = summary.event_date or self._date
+        self._date_touched = True  # the saved date wins over the clip's creation time
+        self._copy = summary.has_copies
+        self._status = summary.step
+        running = self._jobs.running()
+        self._import_active = self._import_id() in running
+        self._open_if_idle()
+        self._refresh()
+
+    def _worker_running(self) -> bool:
+        running = self._jobs.running()
+        return self._import_id() in running or self._analyze_id() in running
+
+    def _open_if_idle(self) -> None:
+        if self._closed or self._store is not None or self.root is None:
+            return
+        if self._worker_running():
+            return
+        self._store = ProjectStore.open(self.root)
+        queued, self._queued = self._queued, []
+        for kind, paths in queued:
+            self.add_files(kind, paths)
+
+    def _read_media(self) -> list[MediaRow]:
+        if self._store is not None:
+            return self._store.list_media()
+        if self.root is None:
+            return []
+        try:
+            ro = ProjectStore.open_readonly(self.root)
+        except (OSError, sqlite3.Error):
+            return self._media
+        try:
+            return ro.list_media()
+        except sqlite3.Error:
+            return self._media
+        finally:
+            ro.close()
+
     def close(self) -> None:
+        self._closed = True
         if self._store is not None:
             self._store.close()
             self._store = None
@@ -292,6 +350,9 @@ class NewProjectVM(QObject):
     # ---- jobs
     def _import_id(self) -> str:
         return f"import:{self.root}"
+
+    def _analyze_id(self) -> str:
+        return f"analyze:{self.root}"
 
     def _start_import(self) -> None:
         if self.root is None:
@@ -333,7 +394,11 @@ class NewProjectVM(QObject):
         self._refresh()
 
     def _on_job_end(self, job_id: str) -> None:
-        if self.root is None or job_id != self._import_id():
+        if self.root is None or job_id not in (self._import_id(), self._analyze_id()):
+            return
+        self._open_if_idle()
+        if job_id != self._import_id():
+            self._refresh()
             return
         self._import_active = False
         self._copy_pct.clear()
@@ -344,9 +409,9 @@ class NewProjectVM(QObject):
             self._refresh()
 
     def _on_job_failed(self, job_id: str, code: str, detail: str) -> None:
-        if self.root is None or job_id != self._import_id():
+        if self.root is None or job_id not in (self._import_id(), self._analyze_id()):
             return
-        if code != "cancelled":
+        if job_id == self._import_id() and code != "cancelled":
             self.import_failure = (code, detail)
         self._on_job_end(job_id)
 
@@ -356,7 +421,7 @@ class NewProjectVM(QObject):
     def start_analysis(self) -> None:
         if not self._can_start or self.root is None:
             return
-        job_id = f"analyze:{self.root}"
+        job_id = self._analyze_id()
         stop = stop_file_for(self.root, "analyze")
         stop.unlink(missing_ok=True)
         argv = worker_argv("analyze", self.root, job_id, app_db=self._app.path, stop_file=stop)
@@ -416,7 +481,7 @@ class NewProjectVM(QObject):
                     return
 
     def _refresh(self, force: bool = False) -> None:
-        self._media = self._store.list_media() if self._store is not None else []
+        self._media = self._read_media()
         self._update_default_date()
         for kind in MediaKind:
             rows = [self._row_for(m) for m in self._media if m.kind is kind] + self._dups[kind]
@@ -465,7 +530,8 @@ class NewProjectVM(QObject):
             for m in self._media
         )
         can = (
-            bool(ready)
+            self._store is not None
+            and bool(ready)
             and not unchecked
             and not self._import_active
             and not self._rerun

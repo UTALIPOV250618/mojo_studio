@@ -1,4 +1,4 @@
-"""48 px top bar: logo, project stepper, RU/KY switch, theme switch."""
+"""48 px top bar: logo, back to projects, project stepper, RU/KY switch, theme switch."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ _STEPS = (
     QT_TRANSLATE_NOOP("Shell", "Файлы"),
     QT_TRANSLATE_NOOP("Shell", "Анализ"),
     QT_TRANSLATE_NOOP("Shell", "Задание"),
-    QT_TRANSLATE_NOOP("Shell", "Черновик"),
+    QT_TRANSLATE_NOOP("Shell", "Редактор"),
     QT_TRANSLATE_NOOP("Shell", "Экспорт"),
 )
 _LANG_LABELS = {"ru": "Русский", "ky": "Кыргызча"}
@@ -21,6 +21,8 @@ _LANG_LABELS = {"ru": "Русский", "ky": "Кыргызча"}
 class TopBar(QWidget):
     language_changed = Signal(str)
     theme_changed = Signal(str)
+    projects_requested = Signal()
+    step_clicked = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -34,6 +36,10 @@ class TopBar(QWidget):
         self._logo = QLabel("Той Студия")
         lay.addWidget(self._logo)
         lay.addSpacing(16)
+        self._projects_btn = QPushButton(QCoreApplication.translate("Shell", "Проекты"))
+        set_variant(self._projects_btn, "variant", "ghost")
+        self._projects_btn.clicked.connect(self.projects_requested)
+        lay.addWidget(self._projects_btn)
         self._steps: list[ElidedButton] = []
         self._step_group = QButtonGroup(self)
         self._step_group.setExclusive(True)
@@ -42,6 +48,7 @@ class TopBar(QWidget):
             b.setCheckable(True)
             b.setEnabled(i == 0)
             set_variant(b, "variant", "ghost")
+            b.clicked.connect(lambda _=False, n=i: self._on_step(n))
             self._step_group.addButton(b)
             lay.addWidget(b)
             self._steps.append(b)
@@ -75,6 +82,22 @@ class TopBar(QWidget):
             b.setChecked(n == i)
             b.setEnabled(n <= reachable)
 
+    def _on_step(self, i: int) -> None:
+        if i != self._current:
+            self.step_clicked.emit(i)
+
+    def set_step_enabled(self, i: int, on: bool) -> None:
+        self._steps[i].setEnabled(on)
+
+    def set_project_mode(self, on: bool) -> None:
+        """Stepper and «Проекты» are shown only while a project is open."""
+        self._projects_btn.setVisible(on)
+        for b in self._steps:
+            b.setVisible(on)
+
+    def click_projects(self) -> None:
+        self._projects_btn.click()
+
     def current_step(self) -> int:
         return self._current
 
@@ -99,6 +122,7 @@ class TopBar(QWidget):
     def retranslate(self) -> None:
         for b, text in zip(self._steps, _STEPS, strict=True):
             b.setText(QCoreApplication.translate("Shell", text))
+        self._projects_btn.setText(QCoreApplication.translate("Shell", "Проекты"))
         self._theme_btn.setText(QCoreApplication.translate("Shell", "Сменить тему"))
 
     def changeEvent(self, e: QEvent) -> None:

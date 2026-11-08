@@ -5,15 +5,14 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QVBoxLayout
 
-from toystudio.app.shell import Shell
 from toystudio.app.theme.apply import apply_theme, set_variant
+from toystudio.app.widgets.top_bar import TopBar
 
 GENERATED = Path(__file__).resolve().parents[2] / "toystudio" / "app" / "theme" / "generated"
 
 
-def test_language_switch_live(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
+def test_language_switch_live(make_shell):
+    w = make_shell()
     assert w.page_title() == "Проекты"
     w.set_language("ky")
     assert w.page_title() == "Долбоорлор"
@@ -21,24 +20,21 @@ def test_language_switch_live(qtbot):
     assert w.page_title() == "Проекты"
 
 
-def test_stepper_labels_ky(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
-    assert w.top_bar.step_labels() == ["Файлы", "Анализ", "Задание", "Черновик", "Экспорт"]
+def test_stepper_labels_ky(make_shell):
+    w = make_shell()
+    assert w.top_bar.step_labels() == ["Файлы", "Анализ", "Задание", "Редактор", "Экспорт"]
     w.set_language("ky")
-    assert w.top_bar.step_labels() == ["Файлдар", "Талдоо", "Тапшырма", "Кара көчүрмө", "Экспорт"]
+    assert w.top_bar.step_labels() == ["Файлдар", "Талдоо", "Тапшырма", "Редактор", "Экспорт"]
 
 
-def test_language_buttons_labels_untranslated(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
+def test_language_buttons_labels_untranslated(make_shell):
+    w = make_shell()
     w.set_language("ky")
     assert w.top_bar.language_labels() == ("Русский", "Кыргызча")
 
 
-def test_top_bar_signals_switch_shell(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
+def test_top_bar_signals_switch_shell(qtbot, make_shell):
+    w = make_shell()
     with qtbot.waitSignal(w.top_bar.language_changed) as sig:
         w.top_bar.click_language("ky")
     assert sig.args == ["ky"]
@@ -49,31 +45,27 @@ def test_top_bar_signals_switch_shell(qtbot):
     assert "#e9eaed" in QApplication.instance().styleSheet()
 
 
-def test_theme_switch(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
+def test_theme_switch(make_shell):
+    make_shell()
     apply_theme(QApplication.instance(), "light")
     assert "#e9eaed" in QApplication.instance().styleSheet()
     apply_theme(QApplication.instance(), "dark")
     assert "#0f1012" in QApplication.instance().styleSheet()
 
 
-def test_minimum_size(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
+def test_minimum_size(make_shell):
+    w = make_shell()
     assert w.minimumSize() == QSize(1280, 720)
 
 
-def test_top_bar_height_and_name(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
+def test_top_bar_height_and_name(make_shell):
+    w = make_shell()
     assert w.top_bar.objectName() == "TopBar"
     assert w.top_bar.height() == 48 or w.top_bar.minimumHeight() == 48
 
 
-def test_set_step_reachability(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
+def test_set_step_reachability(make_shell):
+    w = make_shell()
     w.top_bar.set_step(1, 2)
     assert w.top_bar.step_enabled() == [True, True, True, False, False]
     assert w.top_bar.current_step() == 1
@@ -123,9 +115,8 @@ def test_label_inside_card_does_not_paint_bg000(qtbot):
 
 
 def test_stepper_buttons_exclusive(qtbot):
-    w = Shell()
-    qtbot.addWidget(w)
-    bar = w.top_bar
+    bar = TopBar()
+    qtbot.addWidget(bar)
     bar.set_step(1, 2)
     bar._steps[1].click()  # clicking the current step must not uncheck it
     assert [b.isChecked() for b in bar._steps] == [False, True, False, False, False]

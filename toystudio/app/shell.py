@@ -1,30 +1,73 @@
-"""Main window: top bar plus a stack of pages."""
+"""Main window: top bar with the project stepper plus a stack of screens 1-3."""
 
 from __future__ import annotations
 
+import contextlib
+import time
+from pathlib import Path
 from typing import Literal
 
-from PySide6.QtCore import QCoreApplication, QEvent, QSize, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QSize
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
-    QLabel,
     QMainWindow,
-    QPushButton,
+    QMessageBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from toystudio.app.i18n import install_language
-from toystudio.app.theme.apply import apply_theme, set_variant
+from toystudio.app.platform.notify import Notifier
+from toystudio.app.platform.taskbar import TaskbarProgress
+from toystudio.app.screens.analysis import AnalysisScreen
+from toystudio.app.screens.new_project import NewProjectScreen
+from toystudio.app.screens.projects import ProjectsScreen
+from toystudio.app.theme.apply import apply_theme
+from toystudio.app.viewmodels.analysis_vm import AnalysisVM
+from toystudio.app.viewmodels.new_project_vm import NewProjectVM
+from toystudio.app.viewmodels.projects_vm import ProjectsVM
 from toystudio.app.widgets.top_bar import TopBar
+from toystudio.core.models import MediaKind
+from toystudio.jobs.launch import stop_file_for
+from toystudio.jobs.manager import JobManager
+from toystudio.storage.app_store import AppStore
+from toystudio.storage.project_store import ProjectStore
+
+STEP_FILES, STEP_ANALYSIS = 0, 1
+STOP_WAIT_S = 10.0
+_KINDS = ("import", "analyze")
+CloseChoice = Literal["minimize", "stop"] | None
+
+
+def _job_root(job_id: str) -> tuple[str, Path] | None:
+    kind, sep, root = job_id.partition(":")
+    return (kind, Path(root)) if sep and kind in _KINDS else None
 
 
 class Shell(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        app_store: AppStore,
+        projects_dir: Path,
+        *,
+        jobs: JobManager | None = None,
+        notifier: Notifier | None = None,
+    ) -> None:
         super().__init__()
         self.setMinimumSize(QSize(1280, 720))
         self.setWindowTitle("Той Студия")
+        self.app_store = app_store
+        self.projects_dir = projects_dir.resolve()
+        self.jobs = jobs if jobs is not None else JobManager(max_parallel=1, parent=self)
+        self.notifier = notifier or Notifier(QApplication.windowIcon())
+        self.taskbar = TaskbarProgress(self)
+        self.root_path: Path | None = None  # project open on screens 2-3
+        self.new_project_screen: NewProjectScreen | None = None
+        self.analysis_screen: AnalysisScreen | None = None
+        self._closing = False
+
         root = QWidget()
         root.setObjectName("Root")
         lay = QVBoxLayout(root)
@@ -36,24 +79,213 @@ class Shell(QMainWindow):
         lay.addWidget(self.stack, 1)
         self.setCentralWidget(root)
 
-        page = QWidget()
-        pl = QVBoxLayout(page)
-        pl.setContentsMargins(32, 32, 32, 32)
-        self._title = QLabel(QCoreApplication.translate("Shell", "Проекты"))
-        self._title.setStyleSheet("font-size: 24px; font-weight: 600;")
-        self._new_btn = QPushButton(QCoreApplication.translate("Shell", "Новый проект"))
-        set_variant(self._new_btn, "variant", "primary")
-        pl.addWidget(self._title)
-        pl.addWidget(self._new_btn, 0, Qt.AlignmentFlag.AlignLeft)
-        pl.addStretch(1)
-        self.stack.addWidget(page)
+        self.projects_vm = ProjectsVM(app_store, is_busy=self.is_busy)
+        self.projects_vm.setParent(self)
+        self.projects_screen = ProjectsScreen(self.projects_vm)
+        self.stack.addWidget(self.projects_screen)
+        self.projects_vm.open_requested.connect(self._open_project)
+        self.projects_vm.new_requested.connect(lambda files: self.show_new_project(list(files)))
 
         self.top_bar.language_changed.connect(self._on_language)
         self.top_bar.theme_changed.connect(self._on_theme)
+        self.top_bar.projects_requested.connect(self.show_projects)
+        self.top_bar.step_clicked.connect(self._on_step)
+        self.jobs.finished.connect(lambda _id: self._on_job_end())
+        self.jobs.failed.connect(lambda _id, _code, _detail: self._on_job_end())
+        self.show_projects()
+
+    # ---- queries
+    def current_screen(self) -> QWidget:
+        return self.stack.currentWidget()
 
     def page_title(self) -> str:
-        return self._title.text()
+        return self.projects_screen._title.text()
 
+    def is_busy(self, root: Path) -> bool:
+        running = self.jobs.running()
+        return any(f"{kind}:{root}" in running for kind in _KINDS)
+
+    def analysis_running(self) -> bool:
+        return any(j.startswith("analyze:") for j in self.jobs.running())
+
+    # ---- navigation
+    def show_projects(self) -> None:
+        self._drop_new_project()
+        self.root_path = None
+        self.projects_vm.reload()
+        self.stack.setCurrentWidget(self.projects_screen)
+        self.top_bar.set_project_mode(False)
+
+    def show_new_project(self, files: list[Path] | None = None, root: Path | None = None) -> None:
+        """Screen 2 for a new project (optionally with dropped files) or an existing one."""
+        self._drop_new_project()
+        vm = NewProjectVM(self.app_store, self.jobs, self.projects_dir)
+        if root is not None:
+            vm.attach(root.resolve())
+        screen = NewProjectScreen(vm)
+        vm.setParent(screen)
+        screen.name_edit.blockSignals(True)
+        screen.name_edit.setText(vm.name)
+        screen.name_edit.blockSignals(False)
+        vm.analysis_started.connect(self._on_analysis_started)
+        self.new_project_screen = screen
+        self.stack.addWidget(screen)
+        self.stack.setCurrentWidget(screen)
+        self.root_path = vm.root
+        self.top_bar.set_project_mode(True)
+        self._update_steps(STEP_FILES)
+        vm.recheck()  # rows were computed before the screen connected
+        if files:
+            vm.add_files(MediaKind.VIDEO, files)
+            self.root_path = vm.root
+
+    def show_analysis(self, root: Path, *, assume_running: bool = False) -> None:
+        root = root.resolve()
+        self._drop_new_project()
+        screen = self.analysis_screen
+        if screen is None or screen.vm.root != root or not screen.vm.running:
+            self._drop_analysis()
+            vm = AnalysisVM(root, self.jobs, self.app_store, assume_running=assume_running)
+            screen = AnalysisScreen(vm, self.notifier, self.taskbar)
+            vm.setParent(screen)
+            vm.changed.connect(lambda v=vm: self._on_analysis_changed(v))
+            screen.open_requested.connect(self.show_analysis)
+            self.analysis_screen = screen
+            self.stack.addWidget(screen)
+        self.stack.setCurrentWidget(screen)
+        self.root_path = root
+        self.top_bar.set_project_mode(True)
+        self._update_steps(STEP_ANALYSIS)
+
+    def _open_project(self, root: Path, step: str) -> None:
+        if step == "files":
+            self.show_new_project(root=root)
+        else:
+            self.show_analysis(root)
+
+    def _on_analysis_started(self, root: Path) -> None:
+        self.show_analysis(root, assume_running=True)
+        self.projects_vm.reload()
+
+    def current_root(self) -> Path | None:
+        """Project open on screens 2-3 (a new project gets its folder with the first file)."""
+        screen = self.new_project_screen
+        if screen is not None and self.current_screen() is screen:
+            return screen.vm.root
+        return self.root_path
+
+    def _on_step(self, i: int) -> None:
+        root = self.current_root()
+        if root is not None and i == STEP_FILES and self._files_reachable(root):
+            self.show_new_project(root=root)
+        elif root is not None and i == STEP_ANALYSIS and self._analysis_reachable(root):
+            self.show_analysis(root)
+        else:  # the click moved the exclusive check mark; put it back
+            on_analysis = self.current_screen() is self.analysis_screen
+            self._update_steps(STEP_ANALYSIS if on_analysis else STEP_FILES)
+
+    def _files_reachable(self, root: Path | None) -> bool:
+        # editing the files of a project that is being analysed would race the worker
+        return root is None or f"analyze:{root}" not in self.jobs.running()
+
+    def _analysis_reachable(self, root: Path | None) -> bool:
+        if root is None:
+            return False
+        if f"analyze:{root}" in self.jobs.running():
+            return True
+        return ProjectStore.peek(root).step != "files"  # read-only: a worker may run
+
+    def _update_steps(self, current: int) -> None:
+        root = self.current_root()
+        analysis = current == STEP_ANALYSIS or self._analysis_reachable(root)
+        self.top_bar.set_step(current, STEP_ANALYSIS if analysis else STEP_FILES)
+        self.top_bar.set_step_enabled(STEP_FILES, self._files_reachable(root))
+
+    def _drop_new_project(self) -> None:
+        screen, self.new_project_screen = self.new_project_screen, None
+        if screen is None:
+            return
+        screen.vm.close()
+        self.stack.removeWidget(screen)
+        screen.deleteLater()
+
+    def _drop_analysis(self) -> None:
+        screen, self.analysis_screen = self.analysis_screen, None
+        if screen is None:
+            return
+        self.stack.removeWidget(screen)
+        screen.deleteLater()
+
+    # ---- progress routing: screen 1 card and the taskbar follow the running analysis
+    def _on_analysis_changed(self, vm: AnalysisVM) -> None:
+        if self._closing:
+            return
+        if vm.running:
+            self.projects_vm.set_progress(vm.root, round(vm.overall_percent), vm.remaining_s)
+        else:
+            self.projects_vm.reload()
+        if self.current_screen() is self.analysis_screen:
+            self._update_steps(STEP_ANALYSIS)
+
+    def _on_job_end(self) -> None:
+        if self.current_screen() is self.projects_screen and not self._closing:
+            self.projects_vm.reload()
+
+    # ---- closing while a worker runs
+    def _ask_close(self) -> CloseChoice:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Той Студия")
+        box.setText(
+            QCoreApplication.translate(
+                "Shell",
+                "Анализ ещё идёт. Свернуть в трей или остановить? Пройденные этапы сохранятся.",
+            )
+        )
+        minimize = box.addButton(
+            QCoreApplication.translate("Shell", "Свернуть"), QMessageBox.ButtonRole.RejectRole
+        )
+        stop = box.addButton(
+            QCoreApplication.translate("Shell", "Остановить и закрыть"),
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        box.setDefaultButton(minimize)
+        box.exec()
+        clicked = box.clickedButton()
+        return "stop" if clicked is stop else "minimize" if clicked is minimize else None
+
+    def stop_jobs(self, wait_s: float = STOP_WAIT_S) -> None:
+        """Ask workers to stop via their stop files, wait for them, then kill what is left."""
+        for job_id in self.jobs.running():
+            parsed = _job_root(job_id)
+            if parsed is None:
+                continue
+            stop = stop_file_for(parsed[1], parsed[0])
+            with contextlib.suppress(OSError):
+                stop.parent.mkdir(parents=True, exist_ok=True)
+                stop.touch()
+        end = time.monotonic() + wait_s
+        while self.jobs.running() and time.monotonic() < end:
+            QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+            time.sleep(0.01)
+        self.jobs.shutdown()
+
+    def closeEvent(self, e: QCloseEvent) -> None:
+        if self.analysis_running():
+            choice = self._ask_close()
+            if choice != "stop":
+                e.ignore()
+                if choice == "minimize":
+                    self.notifier.minimize_to_tray(self)
+                return
+        self.stop_jobs()
+        self._closing = True  # from here on nothing reads app.db: main closes it after exec()
+        self._drop_new_project()
+        self._drop_analysis()
+        self.taskbar.set_progress(None)
+        super().closeEvent(e)
+
+    # ---- language and theme
     def set_language(self, code: Literal["ru", "ky"]) -> bool:
         ok = install_language(QApplication.instance(), code)  # type: ignore[arg-type]
         if not ok:
@@ -70,8 +302,7 @@ class Shell(QMainWindow):
         apply_theme(QApplication.instance(), "light" if theme == "light" else "dark")  # type: ignore[arg-type]
 
     def retranslate(self) -> None:
-        self._title.setText(QCoreApplication.translate("Shell", "Проекты"))
-        self._new_btn.setText(QCoreApplication.translate("Shell", "Новый проект"))
+        """Screens and the top bar retranslate themselves on LanguageChange."""
 
     def changeEvent(self, e: QEvent) -> None:
         if e.type() == QEvent.Type.LanguageChange:

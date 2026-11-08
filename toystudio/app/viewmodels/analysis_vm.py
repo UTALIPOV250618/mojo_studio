@@ -134,6 +134,11 @@ class AnalysisVM(QObject):
         return not self._active and not self._snap.step_done
 
     @property
+    def remaining_s(self) -> float | None:
+        """Worker's latest time-left estimate while running (for the project card)."""
+        return self._remaining_s if self._active else None
+
+    @property
     def project_name(self) -> str:
         return self._snap.name
 

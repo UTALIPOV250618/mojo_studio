@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -6,7 +7,6 @@ import pytest
 
 import toystudio.app.main as app_main
 from toystudio.app import i18n
-from toystudio.app.shell import Shell
 
 APP_DIR = Path(i18n.__file__).resolve().parents[1]
 VENV_BIN = Path(__file__).resolve().parents[2] / ".venv" / "bin"
@@ -28,9 +28,8 @@ def test_install_language_without_lrelease_stays_ru(qapp, no_lrelease):
     assert i18n.install_language(qapp, "ru") is True
 
 
-def test_shell_toggle_reverts_when_ky_unavailable(qtbot, no_lrelease):
-    w = Shell()
-    qtbot.addWidget(w)
+def test_shell_toggle_reverts_when_ky_unavailable(make_shell, no_lrelease):
+    w = make_shell()
     assert w.set_language("ky") is False
     assert w.page_title() == "Проекты"
     assert w.top_bar._lang["ru"].isChecked()
@@ -62,7 +61,7 @@ def test_lupdate_keeps_all_translations(tmp_path):
     subprocess.run([lupdate, *sources, "-ts", str(ts)], check=True, capture_output=True)
     text = ts.read_text("utf-8")
     assert 'type="vanished"' not in text and 'type="obsolete"' not in text
-    assert text.count("<message>") == 119
+    assert text.count("<message>") == 121
     assert "needs native-speaker review" in text
     assert "Долбоорлор" in text and "Кара көчүрмө" in text
 
@@ -71,3 +70,11 @@ def test_ky_ts_has_no_empty_context_and_no_untranslated_message():
     text = (APP_DIR / "i18n" / "ky.ts").read_text("utf-8")
     assert "<name></name>" not in text
     assert '<translation type="unfinished"></translation>' not in text
+
+
+def test_every_draft_translation_is_flagged_for_review():
+    text = (APP_DIR / "i18n" / "ky.ts").read_text("utf-8")
+    for body in re.findall(r"<message>(.*?)</message>", text, re.DOTALL):
+        source = re.search(r"<source>(.*?)</source>", body, re.DOTALL).group(1)
+        if 'type="unfinished"' in body and source != "ru":  # "ru" is the language marker
+            assert "needs native-speaker review" in body, source
