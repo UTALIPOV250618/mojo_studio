@@ -9,7 +9,6 @@ Outputs are written to ``*.part`` files and renamed only when everything succeed
 import os
 import queue
 import subprocess
-import sys
 import threading
 import time
 from collections import deque
@@ -23,7 +22,7 @@ import numpy as np
 from toystudio.core.models import US_PER_S, MediaInfo
 from toystudio.engine.analysis.envelope import envelope_from_wav
 from toystudio.engine.analysis.metrics import FrameReader, MetricsAccumulator
-from toystudio.engine.media.ffmpeg import find_tool
+from toystudio.engine.media.ffmpeg import find_tool, popen_flags
 
 PROXY_SHORT_SIDE = 540
 METRIC_LONG, METRIC_SHORT = 160, 90
@@ -157,10 +156,6 @@ def _tonemap() -> Literal["zscale", "fallback"]:
     return "zscale" if has_filter("zscale") else "fallback"
 
 
-def _popen_flags() -> int:
-    return subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-
-
 class _Progress:
     """Parses ffmpeg's -progress lines from stderr in a thread."""
 
@@ -221,7 +216,7 @@ def run(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         stdin=subprocess.DEVNULL,
-        creationflags=_popen_flags(),
+        creationflags=popen_flags(),
     )
     assert proc.stdout is not None and proc.stderr is not None
     progress = _Progress(proc.stderr)

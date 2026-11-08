@@ -42,3 +42,49 @@ def test_find_tool_env_override(tmp_path, monkeypatch):
     exe.chmod(0o755)
     monkeypatch.setenv("TOYSTUDIO_FFMPEG_DIR", str(tmp_path))
     assert Path(find_tool("ffprobe")) == exe
+
+
+def test_popen_flags_hide_console_only_on_windows(monkeypatch):
+    import subprocess
+
+    from toystudio.engine.media import ffmpeg
+
+    monkeypatch.setattr(ffmpeg.sys, "platform", "darwin")
+    assert ffmpeg.popen_flags() == 0
+    monkeypatch.setattr(ffmpeg.sys, "platform", "win32")
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    assert ffmpeg.popen_flags() == 0x08000000
+
+
+def test_every_child_process_gets_the_no_window_flag(monkeypatch, tmp_path):
+    import subprocess
+
+    from toystudio.app import i18n
+    from toystudio.engine.media import probe, thumbs
+
+    seen: list[object] = []
+
+    def fake_run(cmd, **kw):
+        seen.append(kw.get("creationflags"))
+        return subprocess.CompletedProcess(cmd, 1, b"{}", b"err")
+
+    for mod in (probe, thumbs, i18n):
+        monkeypatch.setattr(mod, "popen_flags", lambda: 0x08000000)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(probe, "find_tool", lambda name: name)
+    monkeypatch.setattr(thumbs, "find_tool", lambda name: name)
+    monkeypatch.setattr(thumbs, "probe_media", lambda p: type("I", (), {"duration_us": 2})())
+    monkeypatch.setattr(i18n, "_lrelease", lambda: "lrelease")
+    monkeypatch.setattr(i18n, "_DIR", tmp_path)
+    (tmp_path / "ky.ts").write_text("<TS/>", "utf-8")
+    try:
+        probe.probe_media(tmp_path / "a.mp4")
+    except ValueError:
+        pass
+    probe.check_integrity(tmp_path / "a.mp4")
+    try:
+        thumbs.card_thumbnail(tmp_path / "p.mp4", tmp_path / "card.jpg")
+    except RuntimeError:
+        pass
+    i18n.build_translations()
+    assert seen and all(f == 0x08000000 for f in seen), seen

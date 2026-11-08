@@ -110,3 +110,25 @@ def test_import_copies_already_probed_row_when_copy_requested_later(tmp_path: Pa
     assert row.path.read_bytes() == src.read_bytes()
     assert row.info == before.info and row.status is MediaStatus.OK
     assert [e for e in events(msgs, "copy") if e["media_id"] == mid]
+
+
+def test_import_restores_missing_file_that_is_back(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    src = make_clip(tmp_path / "Флешка" / "клип.mp4", duration_s=2, size="320x180")
+    mid = _add(root, src, copied=False)
+    hidden = src.with_name("спрятан.mp4")
+    src.rename(hidden)  # drive unplugged
+    s = run_worker("import", root, app_db=tmp_path / "app.db")
+    try:
+        assert s.list_media()[0].status is MediaStatus.MISSING
+    finally:
+        s.close()
+    hidden.rename(src)  # drive is back
+    msgs: list = []
+    s = run_worker("import", root, app_db=tmp_path / "app.db", msgs=msgs)
+    try:
+        row = s.list_media()[0]
+    finally:
+        s.close()
+    assert row.status is MediaStatus.OK and row.info is not None
+    assert {"media_id": mid, "status": "ok"} in events(msgs, "media")

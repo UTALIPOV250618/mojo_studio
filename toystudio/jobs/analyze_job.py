@@ -29,6 +29,7 @@ from toystudio.engine.analysis.single_pass import FfmpegFailed, Outputs, Stopped
 from toystudio.engine.analysis.sync import sync_project
 from toystudio.engine.media.probe import check_integrity, probe_media
 from toystudio.engine.media.thumbs import card_thumbnail
+from toystudio.jobs.import_job import restore_missing
 from toystudio.jobs.protocol import Event, Progress
 from toystudio.storage.app_store import AppStore
 from toystudio.storage.project_store import ProjectStore
@@ -225,12 +226,17 @@ class _Run:
             raise Stopped()
         self.store.set_stage(PROJECT_MEDIA_ID, stage, StageState.RUNNING)
         self.stage_event(PROJECT_MEDIA_ID, stage, StageState.RUNNING)
-        envelopes: dict[int, np.ndarray | None] = {}
-        for mid in video_ids:
-            env = outputs_for(self.cache, mid).envelope
-            envelopes[mid] = np.load(env) if env.is_file() else None
-        for r in sync_project(envelopes):
-            self.store.set_sync(r.media_id, r.offset_us, r.confidence)
+        try:
+            envelopes: dict[int, np.ndarray | None] = {}
+            for mid in video_ids:
+                env = outputs_for(self.cache, mid).envelope
+                envelopes[mid] = np.load(env) if env.is_file() else None
+            for r in sync_project(envelopes):
+                self.store.set_sync(r.media_id, r.offset_us, r.confidence)
+        except Exception:  # noqa: BLE001 - files stay analysed; the wizard can finish
+            traceback.print_exc(file=sys.stderr)
+            self.finish(PROJECT_MEDIA_ID, stage, StageState.FAILED, error_code="error")
+            return
         self.finish(PROJECT_MEDIA_ID, stage, StageState.DONE)
 
 
@@ -258,6 +264,8 @@ def run(ctx: JobContext) -> None:
     app = AppStore(ctx.app_db) if ctx.app_db is not None else None
     try:
         r = _Run(ctx, store, app, _speeds(app))
+        for mid in restore_missing(store):  # finished stages of a returned file are reused
+            ctx.report(Event("media", {"media_id": mid, "status": "ok"}))
         videos = _ok_videos(store)
         for m in videos:  # pending rows up front, so the GUI shows the whole plan
             for stage in STAGE_ORDER:

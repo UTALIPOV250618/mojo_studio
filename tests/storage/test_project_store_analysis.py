@@ -59,6 +59,8 @@ def test_step_progression(tmp_path):
     s = new_store(tmp_path)
     assert s.step() == "files"
     mid = add_video(s, tmp_path)
+    assert s.step() == "files"  # ruling R21: analysis never started
+    s.set_stage(mid, StageName.PROBE, StageState.PENDING)
     assert s.step() == "analysis"
     for st in STAGE_ORDER:
         s.set_stage(
@@ -75,7 +77,9 @@ def test_corrupt_media_does_not_block_step(tmp_path):
     bad = add_video(s, tmp_path, "bad.MP4")
     good = add_video(s, tmp_path, "good.MP4")
     s.set_media_status(bad, MediaStatus.CORRUPT)
-    assert s.step() == "analysis"
+    assert s.step() == "files"
+    s.set_stage(bad, StageName.PROBE, StageState.FAILED, error_code="corrupt")
+    assert s.step() == "analysis"  # analysis started: the corrupt file was tried
     finish_all(s, good)
     s.set_stage(0, StageName.SYNC, StageState.DONE)
     assert s.step() == "analysis_done"
@@ -178,6 +182,22 @@ def test_failed_stage_counts_as_finished(tmp_path):
     assert s.step() == "analysis"
 
 
+def test_failed_sync_counts_as_finished(tmp_path):
+    s = new_store(tmp_path)
+    mid = add_video(s, tmp_path)
+    finish_all(s, mid)
+    s.set_stage(0, StageName.SYNC, StageState.FAILED, error_code="error")
+    assert s.step() == "analysis_done"
+
+
+def test_peek_with_media_but_no_stages_is_files_step(tmp_path):
+    s = new_store(tmp_path)
+    add_video(s, tmp_path)
+    root = s.root
+    s.close()
+    assert ProjectStore.peek(root).step == "files"
+
+
 def test_peek_returns_summary_and_does_not_mutate(tmp_path):
     s = new_store(tmp_path)
     a = add_video(s, tmp_path, "a.MP4")
@@ -239,3 +259,36 @@ def test_rename_and_remove_project(tmp_path):
     app.register_project(s.root, "Новое", "files", datetime(2026, 1, 1))
     app.remove_project(s.root)
     assert app.list_projects() == []
+
+
+def test_readonly_uri_cyrillic_path(tmp_path):
+    from toystudio.storage.project_store import readonly_uri
+
+    root = tmp_path / "Той Студия" / "Свадьба Айбек #1"
+    s = ProjectStore.create(root, "Той", ToiKind.WEDDING, date(2026, 10, 12))
+    add_video(s, tmp_path)
+    s.close()
+    uri = readonly_uri(root / "project.db")
+    assert uri.startswith("file:") and uri.endswith("?mode=ro")
+    assert "Той" not in uri and " " not in uri and "#" not in uri  # percent-encoded
+    ro = ProjectStore.open_readonly(root)
+    try:
+        assert ro.name == "Той" and len(ro.list_media()) == 1
+    finally:
+        ro.close()
+    assert ProjectStore.peek(root).name == "Той"
+
+
+def test_readonly_uri_windows_drive_and_unc(monkeypatch):
+    import nturl2path
+
+    from toystudio.storage import project_store
+
+    win = nturl2path.pathname2url
+    monkeypatch.setattr(project_store.os.path, "abspath", str)  # Windows paths: already absolute
+    assert project_store.readonly_uri(r"Z:\Той\project.db", win) == (
+        "file:///Z:/%D0%A2%D0%BE%D0%B9/project.db?mode=ro"
+    )
+    assert project_store.readonly_uri(r"\\server\share\p\project.db", win) == (
+        "file:////server/share/p/project.db?mode=ro"
+    )

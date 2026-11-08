@@ -1,11 +1,17 @@
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
+import psutil
 import pytest
 
+from tests.media_fixtures import make_clip, needs_ffmpeg
+from toystudio.core.models import MediaKind, ToiKind
+from toystudio.jobs.launch import worker_argv
 from toystudio.jobs.manager import JobManager
 from toystudio.jobs.worker_main import main
+from toystudio.storage.project_store import ProjectStore
 
 FAKE = str(Path(__file__).parent / "fake_worker.py")
 T = 10_000
@@ -177,3 +183,34 @@ def test_pending_and_is_active_cover_queued_jobs(qtbot, mgr):
     assert mgr.pending() == [] and not mgr.is_active("b")
     mgr.cancel("a")
     qtbot.waitUntil(lambda: not mgr.is_active("a"), timeout=T)
+
+
+@needs_ffmpeg
+def test_cancel_kills_the_ffmpeg_child_too(qtbot, mgr, tmp_path):
+    # Windows does not kill a killed worker's children: an orphaned ffmpeg keeps .part open
+    clip = make_clip(tmp_path / "src" / "длинный клип.mp4", duration_s=20, size="640x360")
+    root = tmp_path / "Той Студия" / "Той"
+    s = ProjectStore.create(root, "Той", ToiKind.TOI, date(2026, 5, 1))
+    s.add_media(clip, MediaKind.VIDEO, clip.stat().st_size, False)
+    s.close()
+    job_id = f"analyze:{root}"
+    in_proxy: list[bool] = []
+    mgr.event.connect(
+        lambda j, ev: (
+            in_proxy.append(True)
+            if ev.kind == "stage"
+            and ev.payload.get("stage") == "proxy"
+            and ev.payload.get("state") == "running"
+            else None
+        )
+    )
+    mgr.start(job_id, worker_argv("analyze", root, job_id, app_db=tmp_path / "app.db"))
+    qtbot.waitUntil(lambda: bool(in_proxy), timeout=60_000)
+    worker = psutil.Process(mgr._active[job_id].process.processId())
+    qtbot.waitUntil(lambda: bool(worker.children(recursive=True)), timeout=10_000)
+    children = worker.children(recursive=True)
+    with qtbot.waitSignal(mgr.failed, timeout=T) as sig:
+        mgr.cancel(job_id)
+    assert sig.args[:2] == [job_id, "cancelled"]
+    alive = [c for c in children if c.is_running() and c.status() != psutil.STATUS_ZOMBIE]
+    assert alive == []

@@ -3,7 +3,7 @@
 from datetime import date
 from pathlib import Path
 
-from tests.jobs.worker_run import events, is_stage, run_raw, run_until, run_worker
+from tests.jobs.worker_run import events, is_stage, kill_tree, run_raw, run_until, run_worker
 from tests.media_fixtures import make_clip, make_noise_clip, make_truncated, needs_ffmpeg
 from toystudio.core.models import (
     STAGE_ORDER,
@@ -165,7 +165,7 @@ def test_analyze_resumes_after_kill(tmp_path: Path) -> None:
         project,
         app_db=app_db,
         when=is_stage("proxy", "done", 1),
-        then=lambda proc: proc.kill(),
+        then=kill_tree,
     )
     assert rc != 0 and not any(isinstance(m, Done) for m in msgs)
 
@@ -278,3 +278,51 @@ def worker_main_run(ctx: JobContext) -> int:
         return 1
     ctx.report(Done())
     return 0
+
+
+def test_missing_file_that_is_back_is_analyzed_on_rerun(tmp_path: Path) -> None:
+    first = _clip(tmp_path, "первый.mp4", duration_s=3)
+    second = _clip(tmp_path, "второй.mp4", duration_s=3)
+    project = _project(tmp_path, first, second)
+    app_db = tmp_path / "app.db"
+    run_worker("analyze", project, app_db=app_db).close()
+    hidden = first.with_name("спрятан.mp4")
+    proxy1 = project / "cache" / "proxy" / "1.mp4"
+    mtime = proxy1.stat().st_mtime_ns
+    first.rename(hidden)
+    s = ProjectStore.open(project)
+    try:
+        s.set_media_status(1, MediaStatus.MISSING)
+    finally:
+        s.close()
+    hidden.rename(first)
+    msgs: list = []
+    s = run_worker("analyze", project, app_db=app_db, msgs=msgs)
+    try:
+        assert s.list_media()[0].status is MediaStatus.OK
+        assert all(s.stage(1, st).state in FINISHED for st in STAGE_ORDER)
+        assert s.step() == "analysis_done"
+    finally:
+        s.close()
+    assert proxy1.stat().st_mtime_ns == mtime  # finished stages are reused
+    assert {"media_id": 1, "status": "ok"} in events(msgs, "media")
+
+
+def test_unexpected_sync_error_marks_sync_failed_and_finishes(tmp_path: Path, monkeypatch) -> None:
+    clip = _clip(tmp_path, "клип.mp4", duration_s=3)
+    project = _project(tmp_path, clip)
+
+    def boom(_envelopes):
+        raise RuntimeError("sync broke")
+
+    monkeypatch.setattr(analyze_job, "sync_project", boom)
+    ctx = _Ctx(project, tmp_path / "app.db")
+    rc = worker_main_run(ctx)
+    assert rc == 0 and isinstance(ctx.msgs[-1], Done)
+    s = ProjectStore.open(project)
+    try:
+        sync = s.stage(0, StageName.SYNC)
+        assert sync.state is StageState.FAILED and sync.error_code == "error"
+        assert s.step() == "analysis_done"
+    finally:
+        s.close()

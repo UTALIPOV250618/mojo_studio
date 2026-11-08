@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from toystudio.core.models import US_PER_S
-from toystudio.engine.media.ffmpeg import find_tool
+from toystudio.engine.media.ffmpeg import find_tool, popen_flags
 from toystudio.engine.media.probe import probe_media
 
 
@@ -18,7 +18,13 @@ def card_thumbnail(proxy: Path, out: Path) -> Path:
            "-ss", f"{mid_s:.3f}", "-i", str(proxy), "-frames:v", "1",
            "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", str(part)]  # fmt: skip
     try:
-        proc = subprocess.run(cmd, capture_output=True, check=False, stdin=subprocess.DEVNULL)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            creationflags=popen_flags(),
+        )
         if proc.returncode != 0 or not part.is_file() or part.stat().st_size == 0:
             tail = proc.stderr.decode(errors="replace")[-2000:]
             raise RuntimeError(f"thumbnail failed for {proxy}: {tail}")

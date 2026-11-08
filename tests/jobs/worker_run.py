@@ -5,6 +5,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from toystudio.jobs.manager import kill_children
 from toystudio.jobs.protocol import Done, Event, Message, decode
 from toystudio.storage.project_store import ProjectStore
 
@@ -89,10 +90,16 @@ def run_until(
         rc = proc.wait(timeout=TIMEOUT_S)
     finally:
         if proc.poll() is None:
-            proc.kill()
+            kill_tree(proc)
             proc.wait()
     assert fired, msgs[-3:]
     return rc, msgs
+
+
+def kill_tree(proc: subprocess.Popen[bytes]) -> None:
+    """Kill like JobManager does: ffmpeg children first, then the worker."""
+    kill_children(proc.pid)
+    proc.kill()
 
 
 def events(msgs: list[Message], kind: str) -> list[dict[str, object]]:

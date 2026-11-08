@@ -100,6 +100,16 @@ def import_one(ctx: JobContext, store: ProjectStore, row: MediaRow) -> None:
     )
 
 
+def restore_missing(store: ProjectStore) -> list[int]:
+    """MISSING rows whose file is back (drive plugged in again) become OK; returns their ids."""
+    back = [
+        m.id for m in store.list_media() if m.status is MediaStatus.MISSING and m.path.is_file()
+    ]
+    for mid in back:
+        store.set_media_status(mid, MediaStatus.OK)
+    return back
+
+
 def _needs_copy(row: MediaRow, store: ProjectStore) -> bool:
     return row.copied and not _inside(row.path, store.root / MEDIA_DIR)
 
@@ -107,6 +117,8 @@ def _needs_copy(row: MediaRow, store: ProjectStore) -> bool:
 def run(ctx: JobContext) -> None:
     store = ProjectStore.open(Path(ctx.project))
     try:
+        for mid in restore_missing(store):
+            ctx.report(Event("media", {"media_id": mid, "status": "ok"}))
         for row in store.list_media():
             if row.status is MediaStatus.OK and (row.info is None or _needs_copy(row, store)):
                 if ctx.should_stop():

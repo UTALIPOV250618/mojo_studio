@@ -1,7 +1,10 @@
 """Per-project SQLite store (project.db) and folder layout."""
 
+import os
 import sqlite3
+import urllib.request
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -31,6 +34,20 @@ _PKG = "toystudio.storage"
 
 def _now() -> str:
     return datetime.now().isoformat()
+
+
+def readonly_uri(db: Path | str, pathname2url: Callable[[str], str] | None = None) -> str:
+    """SQLite URI that opens `db` read-only (works for mapped and network drives).
+
+    Path.resolve()/as_uri() turn a mapped drive Z: into \\\\server\\share and then into
+    file://server/share, whose authority SQLite rejects. So the path stays absolute but
+    unresolved, and a UNC path gets an empty authority: file:////server/share/...
+    """
+    to_url = pathname2url or urllib.request.pathname2url
+    url = to_url(os.path.abspath(db))
+    if url.startswith("//") and not url.startswith("///"):
+        url = "//" + url  # UNC: empty authority, path //server/share
+    return f"file:{url}?mode=ro"
 
 
 @dataclass(frozen=True)
@@ -99,7 +116,7 @@ class ProjectStore:
         db = root / "project.db"
         if not db.is_file():
             raise FileNotFoundError(db)
-        return cls(root, sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True))
+        return cls(root, sqlite3.connect(readonly_uri(db), uri=True))
 
     @classmethod
     def peek(cls, root: Path, fallback_name: str = "") -> ProjectSummary:
@@ -114,7 +131,7 @@ class ProjectStore:
             return fallback
         current = max(n for n, _ in _migrations(_PKG))
         try:
-            con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+            con = sqlite3.connect(readonly_uri(db), uri=True)
         except sqlite3.Error:
             return fallback
         try:
@@ -412,20 +429,26 @@ class ProjectStore:
     # --- wizard step ---
 
     def step(self) -> Literal["files", "analysis", "analysis_done"]:
-        videos = self.list_media(MediaKind.VIDEO)
-        if not videos:
+        """Wizard step of the project.
+
+        "files" while analysis never started: no stage row at all (ruling R21; `analyze`
+        writes PENDING rows for every OK video and SYNC up front, `remove_media` drops a
+        file's rows). A file with a FAILED stage counts as finished (ruling R9), so does a
+        FAILED SYNC.
+        """
+        videos = [m for m in self.list_media(MediaKind.VIDEO) if m.status is MediaStatus.OK]
+        started = self._con.execute("SELECT 1 FROM stage_run LIMIT 1").fetchone() is not None
+        if not started:
             return "files"
         finished = (StageState.DONE, StageState.SKIPPED)
         for m in videos:
-            if m.status is not MediaStatus.OK:
-                continue
             runs = [self.stage(m.id, st) for st in STAGE_ORDER]
             if any(r is not None and r.state is StageState.FAILED for r in runs):
                 continue  # ruling R9: a failed file is finished; it is retried on rerun
             if any(r is None or r.state not in finished for r in runs):
                 return "analysis"
         sync = self.stage(0, StageName.SYNC)
-        if sync is None or sync.state not in finished:
+        if sync is None or sync.state not in (*finished, StageState.FAILED):
             return "analysis"
         return "analysis_done"
 

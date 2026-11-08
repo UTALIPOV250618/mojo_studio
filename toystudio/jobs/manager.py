@@ -8,6 +8,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
+import psutil
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
 from toystudio.jobs.protocol import Done, Event, Failed, Progress, decode
@@ -16,6 +17,32 @@ log = logging.getLogger(__name__)
 
 STDERR_TAIL = 4096
 PROGRESS_INTERVAL_S = 0.25
+
+
+def kill_children(pid: int) -> None:
+    """Kill every descendant of `pid` (ffmpeg under a worker).
+
+    On Windows killing a process does not kill its children: an orphaned ffmpeg would keep
+    the `.part` files open and the next run could not clean them up (WinError 32).
+    """
+    if pid <= 0:
+        return
+    try:
+        children = psutil.Process(pid).children(recursive=True)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return
+    for child in children:
+        try:
+            child.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    psutil.wait_procs(children, timeout=3)
+
+
+def kill_tree(proc: QProcess) -> None:
+    """Kill the worker's children first, then the worker."""
+    kill_children(int(proc.processId()))
+    proc.kill()
 
 
 @dataclass
@@ -71,7 +98,7 @@ class JobManager(QObject):
         job = self._active.get(job_id)
         if job is not None and job.process is not None:
             job.cancelled = True
-            job.process.kill()
+            kill_tree(job.process)
 
     def shutdown(self) -> None:
         """Kill everything without emitting signals (teardown)."""
@@ -82,7 +109,7 @@ class JobManager(QObject):
                 job.timer.stop()
             if proc is not None:
                 proc.blockSignals(True)
-                proc.kill()
+                kill_tree(proc)
                 proc.waitForFinished(3000)
         self._active.clear()
 
@@ -111,8 +138,6 @@ class JobManager(QObject):
         if sys.platform != "win32" or job.process is None:
             return
         try:
-            import psutil
-
             pid = job.process.processId()
             psutil.Process(pid).nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
         except Exception:

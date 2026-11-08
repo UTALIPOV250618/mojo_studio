@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from toystudio.core.models import US_PER_S, MediaInfo
-from toystudio.engine.media.ffmpeg import find_tool
+from toystudio.engine.media.ffmpeg import find_tool, popen_flags
 
 HDR_TRCS = {"arib-std-b67", "smpte2084"}
 
@@ -41,6 +41,7 @@ def probe_media(path: Path) -> MediaInfo:
          "-show_format", "-show_streams", str(path)],
         capture_output=True,
         check=False,
+        creationflags=popen_flags(),
     )  # fmt: skip
     if proc.returncode != 0:
         raise ValueError(f"ffprobe failed for {path}: {proc.stderr.decode(errors='replace')}")
@@ -89,6 +90,7 @@ def _decode_errors(args: list[str]) -> bool:
         [find_tool("ffmpeg"), "-v", "error", *args, "-f", "null", "-"],
         capture_output=True,
         check=False,
+        creationflags=popen_flags(),
     )
     return proc.returncode == 0 and not proc.stderr.strip()
 
