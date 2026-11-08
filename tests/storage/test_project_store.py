@@ -201,3 +201,12 @@ def test_serde_roundtrip_all_fields_non_default():
     expected = {f.name for f in dataclasses.fields(Segment)}
     assert set(obj["video"][0]) == expected
     assert set(obj["music"][0]) == expected
+
+
+def test_update_details_changes_kind_and_date(tmp_path):
+    root = tmp_path / "Той"
+    s = ProjectStore.create(root, "Той", ToiKind.TOI, date(2026, 1, 2))
+    s.update_details(ToiKind.JUBILEE, date(2026, 3, 4))
+    s.close()
+    peeked = ProjectStore.peek(root)
+    assert (peeked.kind, peeked.event_date) == (ToiKind.JUBILEE, date(2026, 3, 4))

@@ -139,6 +139,13 @@ class ProjectStore:
         with self._con:
             self._con.execute("UPDATE project SET name=?, updated_at=? WHERE id=1", (name, _now()))
 
+    def update_details(self, kind: ToiKind, event_date: date) -> None:
+        with self._con:
+            self._con.execute(
+                "UPDATE project SET kind=?, event_date=?, updated_at=? WHERE id=1",
+                (kind.value, event_date.isoformat(), _now()),
+            )
+
     @property
     def name(self) -> str:
         return str(self._con.execute("SELECT name FROM project WHERE id=1").fetchone()[0])

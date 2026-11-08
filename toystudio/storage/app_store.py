@@ -18,6 +18,7 @@ class ProjectRow:
 
 class AppStore:
     def __init__(self, path: Path) -> None:
+        self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         self._con: sqlite3.Connection = connect(path)
         with self._con:
