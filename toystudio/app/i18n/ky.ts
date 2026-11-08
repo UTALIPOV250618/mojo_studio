@@ -2,112 +2,108 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="ky_KG" sourcelanguage="ru_RU">
 <context>
-    <name></name>
-    <message>
-        <location filename="../screens/analysis.py" line="162"/>
-        <source>AnalysisScreen</source>
-        <comment>Анализ остановился из-за ошибки.</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="163"/>
-        <source>AnalysisScreen</source>
-        <comment>Пройденные этапы сохранены. Попробуйте продолжить.</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="167"/>
-        <location filename="../screens/analysis.py" line="218"/>
-        <source>AnalysisScreen</source>
-        <comment>Повторить</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="172"/>
-        <source>AnalysisScreen</source>
-        <comment>Ни один файл не удалось проанализировать.</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="173"/>
-        <source>AnalysisScreen</source>
-        <comment>Проверьте файлы на шаге «Файлы».</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="207"/>
-        <source>AnalysisScreen</source>
-        <comment>Анализ идёт на этом компьютере, интернет не нужен</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="209"/>
-        <source>AnalysisScreen</source>
-        <comment>Уже найдено</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="211"/>
-        <source>AnalysisScreen</source>
-        <comment>Моменты появятся после поиска тостов и танцев</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="213"/>
-        <source>AnalysisScreen</source>
-        <comment>Уведомить, когда закончится</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="215"/>
-        <source>AnalysisScreen</source>
-        <comment>Свернуть</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="216"/>
-        <source>AnalysisScreen</source>
-        <comment>Остановить</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="217"/>
-        <source>AnalysisScreen</source>
-        <comment>Продолжить анализ</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="219"/>
-        <source>AnalysisScreen</source>
-        <comment>Пройденные этапы сохранены</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../screens/analysis.py" line="220"/>
-        <source>AnalysisScreen</source>
-        <comment>Анализ завершён</comment>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>AnalysisScreen</name>
     <message>
-        <location filename="../screens/analysis.py" line="151"/>
+        <location filename="../screens/analysis.py" line="153"/>
         <source>Не удалось проанализировать: %1</source>
         <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Талдоо мүмкүн болгон жок: %1</translation>
     </message>
     <message>
-        <location filename="../screens/analysis.py" line="184"/>
+        <location filename="../screens/analysis.py" line="163"/>
+        <source>Анализ остановился из-за ошибки.</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Талдоо ката кетип токтоп калды.</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="164"/>
+        <source>Пройденные этапы сохранены. Попробуйте продолжить.</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Өтүлгөн этаптар сакталды. Улантып көрүңүз.</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="170"/>
+        <location filename="../screens/analysis.py" line="232"/>
+        <source>Повторить</source>
+        <translation type="unfinished">Кайталоо</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="175"/>
+        <source>Ни один файл не удалось проанализировать.</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Бир да файлды талдоо мүмкүн болгон жок.</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="178"/>
+        <source>Проверьте файлы на шаге «Файлы».</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">«Файлдар» кадамындагы файлдарды текшериңиз.</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="189"/>
         <source>Анализ «%1» готов</source>
         <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">«%1» талдоосу даяр</translation>
     </message>
     <message>
-        <location filename="../screens/analysis.py" line="188"/>
+        <location filename="../screens/analysis.py" line="193"/>
         <source>Той Студия</source>
         <translatorcomment>needs native-speaker review</translatorcomment>
         <translation type="unfinished">Той Студия</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="211"/>
+        <source>Анализ идёт на этом компьютере, интернет не нужен</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Талдоо ушул компьютерде жүрүп жатат, интернет керек эмес</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="215"/>
+        <source>Уже найдено</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Табылгандар</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="217"/>
+        <source>Моменты появятся после поиска тостов и танцев</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Тосттор менен бийлер изделгенден кийин учурлар пайда болот</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="224"/>
+        <source>Уведомить, когда закончится</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Бүткөндө кабарлоо</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="227"/>
+        <source>Свернуть</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Жыйыштыруу</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="228"/>
+        <source>Остановить</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Токтотуу</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="230"/>
+        <source>Продолжить анализ</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Талдоону улантуу</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="234"/>
+        <source>Пройденные этапы сохранены</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Өтүлгөн этаптар сакталды</translation>
+    </message>
+    <message>
+        <location filename="../screens/analysis.py" line="236"/>
+        <source>Анализ завершён</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Талдоо аяктады</translation>
     </message>
 </context>
 <context>

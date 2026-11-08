@@ -129,6 +129,8 @@ class AnalysisScreen(QWidget):
     # ---- vm -> widgets
     def _render(self) -> None:
         vm = self.vm
+        if vm.running:
+            self._failure = None  # a new run supersedes the old crash banner
         for w, view in zip(self.stage_widgets, vm.stages, strict=True):
             w.set_title(view.title)
             w.set_state(view.state, view.found_text, view.percent)
@@ -155,22 +157,25 @@ class AnalysisScreen(QWidget):
         self._render_banner()
 
     def _render_banner(self) -> None:
-        tr = QCoreApplication.translate
         vm = self.vm
         if self._failure is not None and not vm.running:
             code, detail = self._failure
-            title = tr("AnalysisScreen", "Анализ остановился из-за ошибки.")
-            body = tr("AnalysisScreen", "Пройденные этапы сохранены. Попробуйте продолжить.")
+            title = QCoreApplication.translate("AnalysisScreen", "Анализ остановился из-за ошибки.")
+            body = QCoreApplication.translate(
+                "AnalysisScreen", "Пройденные этапы сохранены. Попробуйте продолжить."
+            )
             self.error_banner.set_content(
                 title,
                 body,
-                [("retry", tr("AnalysisScreen", "Повторить"))],
+                [("retry", QCoreApplication.translate("AnalysisScreen", "Повторить"))],
                 f"{code}: {detail}".strip(": "),
             )
             self.error_banner.show()
         elif vm.all_failed and not vm.running:
-            title = tr("AnalysisScreen", "Ни один файл не удалось проанализировать.")
-            body = tr("AnalysisScreen", "Проверьте файлы на шаге «Файлы».")
+            title = QCoreApplication.translate(
+                "AnalysisScreen", "Ни один файл не удалось проанализировать."
+            )
+            body = QCoreApplication.translate("AnalysisScreen", "Проверьте файлы на шаге «Файлы».")
             self.error_banner.set_content(title, body, [])
             self.error_banner.show()
         else:
@@ -201,23 +206,34 @@ class AnalysisScreen(QWidget):
 
     # ---- i18n
     def retranslate(self) -> None:
-        tr = QCoreApplication.translate
         self.vm.retranslate()
         self._offline_note.setText(
-            tr("AnalysisScreen", "Анализ идёт на этом компьютере, интернет не нужен")
+            QCoreApplication.translate(
+                "AnalysisScreen", "Анализ идёт на этом компьютере, интернет не нужен"
+            )
         )
-        self._found_title.setText(tr("AnalysisScreen", "Уже найдено"))
+        self._found_title.setText(QCoreApplication.translate("AnalysisScreen", "Уже найдено"))
         self.found_empty.set_texts(
-            tr("AnalysisScreen", "Моменты появятся после поиска тостов и танцев"), "", None
+            QCoreApplication.translate(
+                "AnalysisScreen", "Моменты появятся после поиска тостов и танцев"
+            ),
+            "",
+            None,
         )
-        self.notify_check.setText(tr("AnalysisScreen", "Уведомить, когда закончится"))
+        self.notify_check.setText(
+            QCoreApplication.translate("AnalysisScreen", "Уведомить, когда закончится")
+        )
         self.notify_check.setIcon(icon("bell", token("ink-muted"), 16))
-        self.minimize_button.setText(tr("AnalysisScreen", "Свернуть"))
-        self.stop_button.setText(tr("AnalysisScreen", "Остановить"))
-        self.resume_button.setText(tr("AnalysisScreen", "Продолжить анализ"))
-        self.retry_button.setText(tr("AnalysisScreen", "Повторить"))
-        self.saved_label.setText(tr("AnalysisScreen", "Пройденные этапы сохранены"))
-        self.done_label.setText(tr("AnalysisScreen", "Анализ завершён"))
+        self.minimize_button.setText(QCoreApplication.translate("AnalysisScreen", "Свернуть"))
+        self.stop_button.setText(QCoreApplication.translate("AnalysisScreen", "Остановить"))
+        self.resume_button.setText(
+            QCoreApplication.translate("AnalysisScreen", "Продолжить анализ")
+        )
+        self.retry_button.setText(QCoreApplication.translate("AnalysisScreen", "Повторить"))
+        self.saved_label.setText(
+            QCoreApplication.translate("AnalysisScreen", "Пройденные этапы сохранены")
+        )
+        self.done_label.setText(QCoreApplication.translate("AnalysisScreen", "Анализ завершён"))
         self._render()
 
     def changeEvent(self, e: QEvent) -> None:

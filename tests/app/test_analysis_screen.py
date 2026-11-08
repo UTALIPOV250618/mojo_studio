@@ -406,3 +406,19 @@ def test_eta_text_in_kyrgyz(qtbot, qapp, project, jobs, app_store):
     vm = make_vm(project, jobs, app_store)
     jobs.event.emit(job_id(project), Event("eta", {"remaining_s": 600}))
     assert vm.eta_text == "дагы ~10 мүн"
+
+
+def test_old_crash_banner_does_not_return_after_resume_and_stop(qtbot, project, jobs, app_store):
+    vm = make_vm(project, jobs, app_store, delay=50)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier(), taskbar=FakeTaskbar())
+    qtbot.addWidget(screen)
+    screen.show()
+    jobs.failed.emit(job_id(project), "crashed", "boom")
+    assert not screen.error_banner.isHidden()
+    screen.error_banner.action.emit("retry")  # «Повторить»
+    assert vm.running
+    assert screen.error_banner.isHidden()
+    vm.stop()
+    jobs.failed.emit(job_id(project), "stopped", "")
+    assert screen.error_banner.isHidden()
+    assert not screen.resume_button.isHidden()

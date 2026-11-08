@@ -65,3 +65,9 @@ def test_lupdate_keeps_all_translations(tmp_path):
     assert text.count("<message>") == 119
     assert "needs native-speaker review" in text
     assert "Долбоорлор" in text and "Кара көчүрмө" in text
+
+
+def test_ky_ts_has_no_empty_context_and_no_untranslated_message():
+    text = (APP_DIR / "i18n" / "ky.ts").read_text("utf-8")
+    assert "<name></name>" not in text
+    assert '<translation type="unfinished"></translation>' not in text
