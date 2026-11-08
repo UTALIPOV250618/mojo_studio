@@ -2,6 +2,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from toystudio.app.i18n import install_language
 from toystudio.app.widgets.analysis_stage import AnalysisStage
@@ -173,3 +174,23 @@ def test_widgets_retranslate_to_ky(qtbot, qapp):
     assert all(a != b for a, b in zip(before, after, strict=True))
     assert all(a != b for a, b in zip(before_zone, after_zone, strict=True))
     assert zone.summary_text() == "1 файл · 1,0 ГБ"
+
+
+def test_drop_zone_corrupt_row_creates_no_toplevel_button(qtbot):
+    zone = DropZone(MediaKind.VIDEO)
+    qtbot.addWidget(zone)
+    zone.set_rows([FileRow("7", "a.mp4", GIB, None, "corrupt", None)])
+    assert not [w for w in QApplication.topLevelWidgets() if isinstance(w, QPushButton)]
+
+
+def test_project_card_preview_follows_width(qtbot):
+    card = ProjectCard()
+    qtbot.addWidget(card)
+    card.set_data("Той", "Той", "8 ноября", 3 * MIN_US, "ready", None, None, None)
+    card.show()
+    for w, h in ((420, 236), (300, 169)):
+        card.resize(w, 300)
+        qApp = QApplication.instance()
+        qApp.processEvents()
+        assert abs(card._preview.width() - w) <= 1
+        assert abs(card._preview.height() - h) <= 1

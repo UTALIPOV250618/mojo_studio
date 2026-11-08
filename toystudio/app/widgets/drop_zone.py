@@ -195,10 +195,10 @@ class DropZone(QFrame):
         status.setProperty("role", "label")
         status.setProperty("tone", _STATE_TONE[r.state])
         lay.addWidget(status)
-        replace = QPushButton()
-        replace.setVisible(r.state == "corrupt")
+        replace = QPushButton(row)
         replace.clicked.connect(lambda _=False, mid=r.media_id: self.replace_requested.emit(mid))
         lay.addWidget(replace)
+        replace.setVisible(r.state == "corrupt")
         self._row_widgets.append((status, replace))
         return row
 

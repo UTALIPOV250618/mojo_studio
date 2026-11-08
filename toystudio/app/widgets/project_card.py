@@ -10,17 +10,19 @@ from PySide6.QtGui import (
     QPainter,
     QPaintEvent,
     QPixmap,
+    QResizeEvent,
     QTextLayout,
     QTextOption,
 )
-from PySide6.QtWidgets import QFrame, QLabel, QProgressBar, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
 
 from toystudio.app.widgets.elided import ElidedLabel
 from toystudio.app.widgets.status_badge import Status, StatusBadge
 from toystudio.core.format import format_timecode
 
-_CARD_W = 280
-_PREVIEW_H = _CARD_W * 9 // 16
+_CARD_MIN_W = 260
+_CARD_MAX_W = 480
+_CARD_W = 280  # fallback width before the first layout
 _MARGIN = 12
 _NAME_LINES = 2
 
@@ -84,7 +86,10 @@ class ProjectCard(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("ProjectCard")
-        self.setFixedWidth(_CARD_W)
+        self.setMinimumWidth(_CARD_MIN_W)
+        self.setMaximumWidth(_CARD_MAX_W)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._pixmap: QPixmap | None = None
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         lay = QVBoxLayout(self)
@@ -92,7 +97,7 @@ class ProjectCard(QFrame):
         lay.setSpacing(8)
         self._preview = QLabel()
         self._preview.setObjectName("ProjectPreview")
-        self._preview.setFixedHeight(_PREVIEW_H)
+        self._preview.setFixedHeight(_CARD_W * 9 // 16)
         self._preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._badge = StatusBadge(self._preview)
         self._badge.move(8, 8)
@@ -137,29 +142,45 @@ class ProjectCard(QFrame):
         self._meta.setText(f"{kind_text} · {date_text}")
         self._badge.set_status(self._status, percent)
         self._badge.adjustSize()
-        if preview is not None and not preview.isNull():
+        self._pixmap = preview if preview is not None and not preview.isNull() else None
+        self._layout_preview()
+        self._duration.setVisible(duration_us is not None)
+        if duration_us is not None:
+            self._duration.setText(format_timecode(duration_us))
+            self._duration.adjustSize()
+            self._place_duration()
+        analysing = status == "analysis"
+        self._bar.setVisible(analysing and percent is not None)
+        self._bar.setValue(percent or 0)
+        self._progress_line.setVisible(analysing)
+        self.retranslate()
+
+    def _place_duration(self) -> None:
+        self._duration.move(
+            self.width() - self._duration.width() - 8,
+            self._preview.height() - self._duration.height() - 8,
+        )
+
+    def _layout_preview(self) -> None:
+        w = max(self.width(), 1)
+        h = w * 9 // 16
+        self._preview.setFixedHeight(h)
+        if self._pixmap is not None:
             self._preview.setPixmap(
-                preview.scaled(
-                    _CARD_W,
-                    _PREVIEW_H,
+                self._pixmap.scaled(
+                    w,
+                    h,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
             )
         else:
             self._preview.clear()
-        self._duration.setVisible(duration_us is not None)
-        if duration_us is not None:
-            self._duration.setText(format_timecode(duration_us))
-            self._duration.adjustSize()
-            self._duration.move(
-                _CARD_W - self._duration.width() - 8, _PREVIEW_H - self._duration.height() - 8
-            )
-        analysing = status == "analysis"
-        self._bar.setVisible(analysing and percent is not None)
-        self._bar.setValue(percent or 0)
-        self._progress_line.setVisible(analysing)
-        self.retranslate()
+        self._place_duration()
+
+    def resizeEvent(self, e: QResizeEvent) -> None:
+        super().resizeEvent(e)
+        self._layout_preview()
 
     def retranslate(self) -> None:
         if self._status == "analysis":
