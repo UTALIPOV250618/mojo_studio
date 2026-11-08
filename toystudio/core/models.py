@@ -162,3 +162,10 @@ class MediaRow:
     status: MediaStatus
     sync_offset_us: int | None
     sync_confidence: float | None
+
+
+@dataclass(frozen=True)
+class SyncResult:
+    media_id: int
+    offset_us: int | None
+    confidence: float
