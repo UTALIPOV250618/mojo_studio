@@ -14,6 +14,7 @@ from PySide6.QtCore import QCoreApplication, QTranslator
 log = logging.getLogger(__name__)
 _DIR = Path(__file__).resolve().parent
 _translator: QTranslator | None = None
+_language: Literal["ru", "ky"] = "ru"
 
 
 def _lrelease() -> str:
@@ -43,15 +44,21 @@ def build_translations() -> Path:
     return qm
 
 
+def current_language() -> Literal["ru", "ky"]:
+    """Language of the last install_language call that took effect (ru until one succeeds)."""
+    return _language
+
+
 def install_language(app: QCoreApplication, code: Literal["ru", "ky"]) -> bool:
     """Install (ky) or remove (ru, the source language) the app translator.
 
     Returns True when the requested language is active; on failure the UI stays Russian.
     """
-    global _translator
+    global _translator, _language
     if _translator is not None:
         app.removeTranslator(_translator)
         _translator = None
+    _language = "ru"
     if code != "ky":
         return True
     try:
@@ -65,4 +72,5 @@ def install_language(app: QCoreApplication, code: Literal["ru", "ky"]) -> bool:
         return False
     app.installTranslator(tr)
     _translator = tr
+    _language = "ky"
     return True

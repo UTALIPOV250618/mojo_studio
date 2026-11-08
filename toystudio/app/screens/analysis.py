@@ -1,0 +1,226 @@
+"""Screen 3: analysis progress - five stages, overall bar, time left, stop/resume."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QCoreApplication, QEvent, Signal
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from toystudio.app.platform.notify import Notifier
+from toystudio.app.platform.taskbar import TaskbarProgress
+from toystudio.app.theme.apply import set_variant, token
+from toystudio.app.viewmodels.analysis_vm import AnalysisVM
+from toystudio.app.widgets.analysis_stage import AnalysisStage
+from toystudio.app.widgets.banner import Banner
+from toystudio.app.widgets.empty_state import EmptyState
+from toystudio.app.widgets.icons import icon
+
+
+class AnalysisScreen(QWidget):
+    open_requested = Signal(Path)
+
+    def __init__(
+        self,
+        vm: AnalysisVM,
+        notifier: Notifier | None = None,
+        taskbar: TaskbarProgress | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.vm = vm
+        self._notifier = notifier or Notifier(QApplication.windowIcon())
+        self._taskbar = taskbar or TaskbarProgress(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(32, 24, 32, 24)
+        root.setSpacing(16)
+        columns = QHBoxLayout()
+        columns.setSpacing(32)
+
+        # ---- left: progress
+        left = QVBoxLayout()
+        left.setSpacing(8)
+        self.error_banner = Banner("error")
+        self.error_banner.hide()
+        self.overall_bar = QProgressBar()
+        self.overall_bar.setRange(0, 100)
+        self.overall_bar.setTextVisible(False)
+        self.eta_label = QLabel()
+        self.eta_label.setProperty("role", "timecode-lg")
+        self._offline_note = QLabel()
+        self._offline_note.setProperty("role", "caption")
+        self._offline_note.setProperty("tone", "muted")
+        left.addWidget(self.error_banner)
+        left.addWidget(self.overall_bar)
+        left.addWidget(self.eta_label)
+        left.addWidget(self._offline_note)
+        left.addSpacing(8)
+        self.stage_widgets = [AnalysisStage(v.title) for v in vm.stages]
+        for w in self.stage_widgets:
+            left.addWidget(w)
+        failed_row = QHBoxLayout()
+        self.failed_label = QLabel()
+        self.failed_label.setProperty("role", "body")
+        self.failed_label.setProperty("tone", "error")
+        self.failed_label.setWordWrap(True)
+        self.retry_button = QPushButton()
+        failed_row.addWidget(self.failed_label, 1)
+        failed_row.addWidget(self.retry_button)
+        self._failed_box = QWidget()
+        self._failed_box.setLayout(failed_row)
+        left.addWidget(self._failed_box)
+        self.saved_label = QLabel()
+        self.saved_label.setProperty("role", "body")
+        self.saved_label.setProperty("tone", "muted")
+        self.done_label = QLabel()
+        self.done_label.setProperty("role", "heading")
+        self.done_label.setProperty("tone", "done")
+        left.addWidget(self.saved_label)
+        left.addWidget(self.done_label)
+        left.addStretch(1)
+        columns.addLayout(left, 60)
+
+        # ---- right: found so far (moments arrive in phase 2b)
+        right = QVBoxLayout()
+        self._found_title = QLabel()
+        self._found_title.setProperty("role", "heading")
+        self.found_empty = EmptyState("film", "", "", None)
+        right.addWidget(self._found_title)
+        right.addWidget(self.found_empty, 1)
+        columns.addLayout(right, 40)
+        root.addLayout(columns, 1)
+
+        # ---- bottom
+        bottom = QHBoxLayout()
+        bottom.setSpacing(12)
+        self.notify_check = QCheckBox()
+        self.notify_check.setChecked(True)
+        self.minimize_button = QPushButton()
+        self.stop_button = QPushButton()
+        set_variant(self.stop_button, "variant", "ghost")
+        self.resume_button = QPushButton()
+        set_variant(self.resume_button, "variant", "primary")
+        bottom.addWidget(self.notify_check)
+        bottom.addStretch(1)
+        for b in (self.minimize_button, self.stop_button, self.resume_button):
+            bottom.addWidget(b)
+        root.addLayout(bottom)
+
+        self.stop_button.clicked.connect(vm.stop)
+        self.resume_button.clicked.connect(vm.resume)
+        self.retry_button.clicked.connect(vm.resume)
+        self.error_banner.action.connect(lambda _key: vm.resume())
+        self.minimize_button.clicked.connect(lambda: self._notifier.minimize_to_tray(self.window()))
+        vm.changed.connect(self._render)
+        vm.finished.connect(self._on_finished)
+        vm.failed.connect(self._on_failed)
+        self._failure: tuple[str, str] | None = None
+        self.retranslate()
+
+    # ---- vm -> widgets
+    def _render(self) -> None:
+        vm = self.vm
+        for w, view in zip(self.stage_widgets, vm.stages, strict=True):
+            w.set_title(view.title)
+            w.set_state(view.state, view.found_text, view.percent)
+        self.overall_bar.setValue(round(vm.overall_percent))
+        self.eta_label.setText(vm.eta_text or "")
+        self.eta_label.setVisible(vm.running and bool(vm.eta_text))
+        self._taskbar.set_progress(vm.overall_percent if vm.running else None)
+        running, resume = vm.running, vm.can_resume
+        self.notify_check.setVisible(running)
+        self.minimize_button.setVisible(running)
+        self.stop_button.setVisible(running)
+        self.stop_button.setEnabled(not vm.stopping)
+        self.resume_button.setVisible(resume)
+        self.saved_label.setVisible(resume)
+        self.done_label.setVisible(vm.done and not vm.all_failed)
+        self._offline_note.setVisible(running)
+        failed = [] if running else vm.failed_files
+        self._failed_box.setVisible(bool(failed) and not vm.all_failed)
+        self.failed_label.setText(
+            QCoreApplication.translate("AnalysisScreen", "Не удалось проанализировать: %1").replace(
+                "%1", ", ".join(failed)
+            )
+        )
+        self._render_banner()
+
+    def _render_banner(self) -> None:
+        tr = QCoreApplication.translate
+        vm = self.vm
+        if self._failure is not None and not vm.running:
+            code, detail = self._failure
+            title = tr("AnalysisScreen", "Анализ остановился из-за ошибки.")
+            body = tr("AnalysisScreen", "Пройденные этапы сохранены. Попробуйте продолжить.")
+            self.error_banner.set_content(
+                title,
+                body,
+                [("retry", tr("AnalysisScreen", "Повторить"))],
+                f"{code}: {detail}".strip(": "),
+            )
+            self.error_banner.show()
+        elif vm.all_failed and not vm.running:
+            title = tr("AnalysisScreen", "Ни один файл не удалось проанализировать.")
+            body = tr("AnalysisScreen", "Проверьте файлы на шаге «Файлы».")
+            self.error_banner.set_content(title, body, [])
+            self.error_banner.show()
+        else:
+            self.error_banner.hide()
+
+    def _on_finished(self, _cuts: int) -> None:
+        self._failure = None
+        self._render()
+        if not self.notify_check.isChecked() or self.vm.all_failed:
+            return
+        body = QCoreApplication.translate("AnalysisScreen", "Анализ «%1» готов").replace(
+            "%1", self.vm.project_name
+        )
+        self._notifier.notify(
+            QCoreApplication.translate("AnalysisScreen", "Той Студия"), body, self._open_project
+        )
+
+    def _on_failed(self, code: str, detail: str) -> None:
+        self._failure = (code, detail)
+        self._render()
+
+    def _open_project(self) -> None:
+        win = self.window()
+        win.showNormal()
+        win.raise_()
+        win.activateWindow()
+        self.open_requested.emit(self.vm.root)
+
+    # ---- i18n
+    def retranslate(self) -> None:
+        tr = QCoreApplication.translate
+        self.vm.retranslate()
+        self._offline_note.setText(
+            tr("AnalysisScreen", "Анализ идёт на этом компьютере, интернет не нужен")
+        )
+        self._found_title.setText(tr("AnalysisScreen", "Уже найдено"))
+        self.found_empty.set_texts(
+            tr("AnalysisScreen", "Моменты появятся после поиска тостов и танцев"), "", None
+        )
+        self.notify_check.setText(tr("AnalysisScreen", "Уведомить, когда закончится"))
+        self.notify_check.setIcon(icon("bell", token("ink-muted"), 16))
+        self.minimize_button.setText(tr("AnalysisScreen", "Свернуть"))
+        self.stop_button.setText(tr("AnalysisScreen", "Остановить"))
+        self.resume_button.setText(tr("AnalysisScreen", "Продолжить анализ"))
+        self.retry_button.setText(tr("AnalysisScreen", "Повторить"))
+        self.saved_label.setText(tr("AnalysisScreen", "Пройденные этапы сохранены"))
+        self.done_label.setText(tr("AnalysisScreen", "Анализ завершён"))
+        self._render()
+
+    def changeEvent(self, e: QEvent) -> None:
+        if e.type() == QEvent.Type.LanguageChange:
+            self.retranslate()
+        super().changeEvent(e)

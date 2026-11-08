@@ -91,6 +91,17 @@ class ProjectStore:
         return cls(root, con)
 
     @classmethod
+    def open_readonly(cls, root: Path) -> Self:
+        """Open for reading only: no migrations, no state changes (safe while a worker runs).
+
+        Methods that write raise sqlite3.OperationalError.
+        """
+        db = root / "project.db"
+        if not db.is_file():
+            raise FileNotFoundError(db)
+        return cls(root, sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True))
+
+    @classmethod
     def peek(cls, root: Path, fallback_name: str = "") -> ProjectSummary:
         """Summarise a project without migrating or writing anything (safe while a worker runs).
 

@@ -210,3 +210,20 @@ def test_update_details_changes_kind_and_date(tmp_path):
     s.close()
     peeked = ProjectStore.peek(root)
     assert (peeked.kind, peeked.event_date) == (ToiKind.JUBILEE, date(2026, 3, 4))
+
+
+def test_open_readonly_does_not_change_running_stage(tmp_path):
+    from toystudio.core.models import MediaKind, StageName, StageState
+
+    store = new_store(tmp_path)
+    mid, _ = store.add_media(tmp_path / "a.mp4", MediaKind.VIDEO, 10, False)
+    store.set_stage(mid, StageName.PROXY, StageState.RUNNING)
+    ro = ProjectStore.open_readonly(store.root)
+    assert ro.stage(mid, StageName.PROXY).state is StageState.RUNNING
+    assert ro.name == "Свадьба Айбек и Нурайым"
+    with pytest.raises(sqlite3.OperationalError):
+        ro.set_stage(mid, StageName.PROXY, StageState.DONE)
+    ro.close()
+    assert store.stage(mid, StageName.PROXY).state is StageState.RUNNING
+    with pytest.raises(FileNotFoundError):
+        ProjectStore.open_readonly(tmp_path / "nope")

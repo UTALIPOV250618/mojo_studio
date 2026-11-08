@@ -148,6 +148,11 @@ QLabel[role="timecode"] {
     font-size: 13px;
     font-weight: 500;
 }
+QLabel[role="timecode-lg"] {
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 18px;
+    font-weight: 500;
+}
 QLabel[tone="muted"] { color: #555c66; }
 QLabel[tone="faint"] { color: #666d77; }
 QLabel[tone="teal"] { color: #1f6f9e; }
