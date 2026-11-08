@@ -176,3 +176,66 @@ def test_failed_stage_counts_as_finished(tmp_path):
     assert s.step() == "analysis_done"
     s.set_stage(failed, StageName.PROXY, StageState.INTERRUPTED)
     assert s.step() == "analysis"
+
+
+def test_peek_returns_summary_and_does_not_mutate(tmp_path):
+    s = new_store(tmp_path)
+    a = add_video(s, tmp_path, "a.MP4")
+    b = add_video(s, tmp_path, "b.MP4")
+    s.set_media_info(
+        a, MediaInfo(5_000_000, 1920, 1080, 0, 25.0, "h264", False, True, True, 1, None)
+    )
+    s.set_media_info(
+        b, MediaInfo(7_000_000, 1920, 1080, 0, 25.0, "h264", False, True, True, 1, None)
+    )
+    s.set_stage(a, StageName.PROBE, StageState.RUNNING)
+    root = s.root
+    s.close()
+    p = ProjectStore.peek(root)
+    assert (p.name, p.kind, p.event_date) == ("Той", ToiKind.WEDDING, date(2026, 10, 12))
+    assert p.duration_us == 12_000_000
+    assert p.step == "analysis"
+    assert not p.has_copies
+    con = sqlite3.connect(root / "project.db")
+    state = con.execute("SELECT state FROM stage_run WHERE media_id=?", (a,)).fetchone()[0]
+    con.close()
+    assert state == StageState.RUNNING.value
+
+
+def test_peek_empty_project_is_files_step(tmp_path):
+    s = new_store(tmp_path)
+    root = s.root
+    s.close()
+    p = ProjectStore.peek(root)
+    assert (p.step, p.duration_us) == ("files", 0)
+
+
+def test_peek_old_schema_falls_back(tmp_path):
+    root = tmp_path / "old"
+    root.mkdir()
+    con = sqlite3.connect(root / "project.db")
+    con.execute("PRAGMA user_version=1")
+    con.execute("CREATE TABLE project (id INTEGER)")
+    con.commit()
+    con.close()
+    p = ProjectStore.peek(root, "Старый")
+    assert (p.name, p.step, p.duration_us) == ("Старый", "files", 0)
+    con = sqlite3.connect(root / "project.db")
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 1
+    con.close()
+
+
+def test_peek_missing_db_falls_back(tmp_path):
+    assert ProjectStore.peek(tmp_path / "nope", "X").name == "X"
+
+
+def test_rename_and_remove_project(tmp_path):
+    s = new_store(tmp_path)
+    s.rename("Новое")
+    assert s.name == "Новое"
+    app = AppStore(tmp_path / "app.db")
+    from datetime import datetime
+
+    app.register_project(s.root, "Новое", "files", datetime(2026, 1, 1))
+    app.remove_project(s.root)
+    assert app.list_projects() == []

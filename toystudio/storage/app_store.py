@@ -55,6 +55,10 @@ class AppStore:
                 (status, updated_at.isoformat(), str(root.resolve())),
             )
 
+    def remove_project(self, root: Path) -> None:
+        with self._con:
+            self._con.execute("DELETE FROM project_list WHERE root=?", (str(root.resolve()),))
+
     def speed(self, stage: str, profile: str) -> float | None:
         row = self._con.execute(
             "SELECT x_rt FROM speed WHERE stage=? AND profile=?", (stage, profile)

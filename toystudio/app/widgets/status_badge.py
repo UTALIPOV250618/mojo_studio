@@ -10,11 +10,17 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 from toystudio.app.theme.apply import set_variant
 from toystudio.app.widgets.icons import IconLabel
 
-Status = Literal["analysis", "ready", "exported", "error", "offline"]
+Status = Literal["analysis", "analysis_done", "ready", "exported", "error", "offline"]
 
 # kind -> (qss badge value, icon, icon colour token, word)
 _SPEC: dict[str, tuple[str, str, str, str]] = {
     "analysis": ("analysis", "spinner", "teal-400", QT_TRANSLATE_NOOP("StatusBadge", "Анализ")),
+    "analysis_done": (
+        "done",
+        "check",
+        "status-done",
+        QT_TRANSLATE_NOOP("StatusBadge", "Анализ завершён"),
+    ),
     "ready": (
         "ready",
         "pencil",

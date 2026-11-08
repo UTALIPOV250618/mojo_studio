@@ -140,8 +140,10 @@ class ProjectCard(QFrame):
         self._percent, self._eta = percent, eta_text
         self._name.set_name(name)
         self._meta.setText(f"{kind_text} · {date_text}")
-        self._badge.set_status(self._status, percent)
-        self._badge.adjustSize()
+        self._badge.setVisible(status != "files")  # nothing to report before analysis
+        if status != "files":
+            self._badge.set_status(self._status, percent)
+            self._badge.adjustSize()
         self._pixmap = preview if preview is not None and not preview.isNull() else None
         self._layout_preview()
         self._duration.setVisible(duration_us is not None)
@@ -190,7 +192,8 @@ class ProjectCard(QFrame):
             if self._eta:
                 parts.append(self._eta)
             self._progress_line.setText(" · ".join(parts))
-        self._badge.retranslate()
+        if self._status != "files":
+            self._badge.retranslate()
 
     def changeEvent(self, e: QEvent) -> None:
         if e.type() == QEvent.Type.LanguageChange:

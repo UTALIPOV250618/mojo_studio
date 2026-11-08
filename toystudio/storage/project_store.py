@@ -2,6 +2,7 @@
 
 import sqlite3
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Literal, Self
@@ -20,7 +21,7 @@ from toystudio.core.models import (
     ToiKind,
 )
 from toystudio.core.timeline import Timeline
-from toystudio.storage.db import connect, migrate
+from toystudio.storage.db import _migrations, connect, migrate
 from toystudio.storage.serde import timeline_from_json, timeline_to_json
 
 KEEP_SNAPSHOTS = 50
@@ -30,6 +31,19 @@ _PKG = "toystudio.storage"
 
 def _now() -> str:
     return datetime.now().isoformat()
+
+
+@dataclass(frozen=True)
+class ProjectSummary:
+    """Read-only snapshot of a project for lists; never touches the project's state."""
+
+    root: Path
+    name: str
+    kind: ToiKind
+    event_date: date | None
+    duration_us: int
+    step: Literal["files", "analysis", "analysis_done"]
+    has_copies: bool = False
 
 
 class ProjectStore:
@@ -76,8 +90,54 @@ class ProjectStore:
             raise
         return cls(root, con)
 
+    @classmethod
+    def peek(cls, root: Path, fallback_name: str = "") -> ProjectSummary:
+        """Summarise a project without migrating or writing anything (safe while a worker runs).
+
+        If project.db is missing, unreadable or older than the current schema, returns the
+        fallback name, kind OTHER and step "files".
+        """
+        fallback = ProjectSummary(root, fallback_name or root.name, ToiKind.OTHER, None, 0, "files")
+        db = root / "project.db"
+        if not db.is_file():
+            return fallback
+        current = max(n for n, _ in _migrations(_PKG))
+        try:
+            con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+        except sqlite3.Error:
+            return fallback
+        try:
+            if int(con.execute("PRAGMA user_version").fetchone()[0]) < current:
+                return fallback
+            row = con.execute("SELECT name, kind, event_date FROM project WHERE id=1").fetchone()
+            if row is None:
+                return fallback
+            store = cls(root, con)
+            media = store.list_media(MediaKind.VIDEO)
+            duration = sum(
+                m.info.duration_us for m in media if m.status is MediaStatus.OK and m.info
+            )
+            copies = any(m.copied for m in store.list_media())
+            return ProjectSummary(
+                root,
+                str(row[0]),
+                ToiKind(row[1]),
+                date.fromisoformat(row[2]) if row[2] else None,
+                duration,
+                store.step(),
+                copies,
+            )
+        except (sqlite3.Error, ValueError):
+            return fallback
+        finally:
+            con.close()
+
     def close(self) -> None:
         self._con.close()
+
+    def rename(self, name: str) -> None:
+        with self._con:
+            self._con.execute("UPDATE project SET name=?, updated_at=? WHERE id=1", (name, _now()))
 
     @property
     def name(self) -> str:
