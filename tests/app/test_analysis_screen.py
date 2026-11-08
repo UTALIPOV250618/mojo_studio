@@ -10,6 +10,7 @@ from toystudio.app.viewmodels.analysis_vm import AnalysisVM
 from toystudio.core.models import (
     MediaInfo,
     MediaKind,
+    MediaStatus,
     QualityInterval,
     QualityLabel,
     StageName,
@@ -415,3 +416,101 @@ def test_old_crash_banner_does_not_return_after_resume_and_stop(qtbot, project, 
     jobs.failed.emit(job_id(project), "stopped", "")
     assert screen.error_banner.isHidden()
     assert not screen.resume_button.isHidden()
+
+
+# ---- final review fixes
+def _all_done(store, mid):
+    for st in (StageName.PROBE, StageName.PROXY, StageName.SCENES, StageName.QUALITY):
+        store.set_stage(mid, st, StageState.DONE)
+    for st in (StageName.SPEECH, StageName.MOMENTS):
+        store.set_stage(mid, st, StageState.SKIPPED)
+
+
+def test_missing_file_is_listed_and_blocks_done(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    _all_done(store, ids[0])
+    store.set_stage(ids[1], StageName.PROBE, StageState.PENDING)
+    store.set_media_status(ids[1], MediaStatus.MISSING)
+    store.set_stage(0, StageName.SYNC, StageState.DONE)
+    vm = make_vm(project, jobs, app_store, running=False)
+    assert vm.missing_files == ["IMG_0419.MP4"]
+    assert not vm.done
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    screen.show()
+    assert screen.missing_label.isVisible()
+    assert screen.missing_label.text() == (
+        "Файл не найден: IMG_0419.MP4. Подключите диск с ним или замените файл."
+    )
+    assert screen.done_label.isHidden()
+    screen.missing_retry_button.click()  # the drive is back: analyze picks the file up
+    assert jobs.started and jobs.started[-1][0] == job_id(project)
+
+
+def test_corrupt_only_failure_hides_retry(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    _all_done(store, ids[0])
+    store.set_media_status(ids[1], MediaStatus.CORRUPT)
+    store.set_stage(ids[1], StageName.PROBE, StageState.FAILED, error_code="corrupt")
+    store.set_stage(0, StageName.SYNC, StageState.DONE)
+    vm = make_vm(project, jobs, app_store, running=False)
+    assert vm.failed_files == ["IMG_0419.MP4"] and not vm.failed_retryable
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    screen.show()
+    assert screen.retry_button.isHidden()
+    assert screen.replace_hint.isVisible()
+    assert screen.replace_hint.text() == "Замените файл на шаге «Файлы»."
+
+
+def test_retry_shown_when_a_failure_can_be_retried(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    store.set_media_status(ids[0], MediaStatus.CORRUPT)
+    store.set_stage(ids[0], StageName.PROBE, StageState.FAILED, error_code="corrupt")
+    store.set_stage(ids[1], StageName.PROBE, StageState.DONE)
+    store.set_stage(ids[1], StageName.PROXY, StageState.FAILED, error_code="ffmpeg")
+    vm = make_vm(project, jobs, app_store, running=False)
+    assert vm.failed_retryable
+
+
+def test_failed_sync_still_finishes(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    for mid in ids:
+        _all_done(store, mid)
+    store.set_stage(0, StageName.SYNC, StageState.FAILED, error_code="error")
+    vm = make_vm(project, jobs, app_store, running=False)
+    assert vm.done
+    assert vm.stages[2].state == "done"
+    assert vm.overall_percent == 100.0
+
+
+def test_notifier_null_icon_falls_back_to_app_icon(qtbot):
+    from PySide6.QtGui import QIcon
+
+    from toystudio.app.platform.notify import Notifier
+    from toystudio.app.widgets.icons import app_icon
+
+    assert not app_icon().isNull()
+    assert not app_icon().pixmap(256, 256).isNull()
+    n = Notifier(QIcon())
+    assert not n.icon.isNull()
+
+
+def test_tray_menu_open_and_quit(qtbot):
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QSystemTrayIcon, QWidget
+
+    from toystudio.app.platform.notify import Notifier
+
+    n = Notifier(QIcon())
+    assert [a.text() for a in n.menu.actions()] == ["Открыть", "Выйти"]
+    w = QWidget()
+    qtbot.addWidget(w)
+    n._window = w  # as after minimize_to_tray
+    n.open_action.trigger()
+    assert w.isVisible()
+    w.hide()
+    n._tray_activated(QSystemTrayIcon.ActivationReason.Trigger)
+    assert w.isVisible()
+    n.quit_action.trigger()
+    assert not w.isVisible()

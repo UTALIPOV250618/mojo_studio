@@ -308,7 +308,22 @@ class NewProjectVM(QObject):
         self._status = summary.step
         self._import_active = self._jobs.is_active(self._import_id())
         self._open_if_idle()
+        if self._store is not None and self._import_due():
+            self._start_import()  # an import cut off by a close or a crash: run it again
         self._refresh()
+
+    def _import_due(self) -> bool:
+        """Rows the import job would still work on (same rule as import_job.run)."""
+        assert self._store is not None and self.root is not None
+        media_dir = self.root / MEDIA_DIR
+        for m in self._store.list_media():
+            if m.status is MediaStatus.MISSING and m.path.is_file():
+                return True  # the drive is back: import flips it to OK
+            if m.status is MediaStatus.OK and (
+                m.info is None or (m.copied and not _inside(m.path, media_dir))
+            ):
+                return True
+        return False
 
     def _worker_running(self) -> bool:
         """A worker of this project runs or is queued (it will write project.db)."""

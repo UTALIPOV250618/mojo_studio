@@ -12,7 +12,7 @@ from toystudio.app.screens.analysis import AnalysisScreen
 from toystudio.app.screens.new_project import NewProjectScreen
 from toystudio.app.shell import Shell
 from toystudio.app.viewmodels import new_project_vm as vm_mod
-from toystudio.core.models import MediaKind, StageName, StageState, ToiKind
+from toystudio.core.models import MediaInfo, MediaKind, MediaStatus, StageName, StageState, ToiKind
 from toystudio.jobs.launch import stop_file_for
 from toystudio.jobs.protocol import Event
 from toystudio.storage.project_store import ProjectStore
@@ -442,3 +442,75 @@ def test_close_stop_cancels_queued_analysis(shell, jobs):
     shell.show()
     assert shell.close()
     assert jobs.queued == [] and jobs.shutdowns == 1
+
+
+# ---- final review fixes
+def _unstarted(w, name: str, *, probed: bool = True, copied: bool = False) -> Path:
+    """A project with one video added on screen 2 whose analysis never started."""
+    root = (w.projects_dir / name).resolve()
+    store = ProjectStore.create(root, name, ToiKind.TOI, date(2026, 5, 1))
+    src = root.parent.parent / "src" / f"{name}.mp4"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_bytes(b"x" * 100)
+    mid, _ = store.add_media(src, MediaKind.VIDEO, 100, copied)
+    if probed:
+        store.set_media_info(
+            mid, MediaInfo(5_000_000, 1920, 1080, 0, 25.0, "h264", False, True, True, 1, None)
+        )
+    store.close()
+    w.app_store.register_project(root, name, "files", datetime.now())
+    w.projects_vm.reload()
+    return root
+
+
+def test_unstarted_project_reopens_on_screen_2(shell, jobs):
+    # ruling R21: files added, analysis never started -> the card opens screen 2
+    root = _unstarted(shell, "Той")
+    shell.projects_vm.open(root)
+    assert isinstance(shell.current_screen(), NewProjectScreen)
+    assert shell.top_bar.current_step() == 0
+    assert jobs.started == []  # nothing left to import
+    assert shell.new_project_screen.vm.can_start
+
+
+def test_reopened_project_restarts_interrupted_import(shell, jobs):
+    root = _unstarted(shell, "Той", probed=False)
+    shell.projects_vm.open(root)
+    assert jobs.started == [f"import:{root}"]
+    assert not shell.new_project_screen.vm.can_start
+
+
+def test_reopened_project_restarts_unfinished_copy(shell, jobs):
+    root = _unstarted(shell, "Той", copied=True)  # probed, but the copy was cut off
+    shell.projects_vm.open(root)
+    assert jobs.started == [f"import:{root}"]
+
+
+def test_reopened_project_rechecks_missing_file_that_is_back(shell, jobs):
+    root = _unstarted(shell, "Той")
+    store = ProjectStore.open(root)
+    store.set_media_status(1, MediaStatus.MISSING)
+    store.close()
+    shell.projects_vm.open(root)
+    assert jobs.started == [f"import:{root}"]
+
+
+def test_no_import_restart_while_its_worker_runs(shell, jobs):
+    root = _unstarted(shell, "Той", probed=False)
+    jobs.active.append(f"import:{root}")
+    shell.projects_vm.open(root)
+    assert jobs.started == []
+
+
+def test_no_ready_notification_while_a_file_is_missing(shell, jobs):
+    a = _project(shell, "А", video=True)
+    jobs.active.append(f"analyze:{a}")
+    shell.show_analysis(a)
+    _finish_all_stages(a)
+    store = ProjectStore.open(a)
+    store.set_media_status(1, MediaStatus.MISSING)
+    store.close()
+    jobs.finish(f"analyze:{a}")
+    assert shell.notifier.shown == []
+    assert shell.analysis_screen.missing_label.isVisibleTo(shell)
+    assert [r.status for r in shell.app_store.list_projects() if r.root == a] == ["analysis"]

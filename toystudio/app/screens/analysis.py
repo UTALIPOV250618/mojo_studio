@@ -70,11 +70,26 @@ class AnalysisScreen(QWidget):
         self.failed_label.setProperty("tone", "error")
         self.failed_label.setWordWrap(True)
         self.retry_button = QPushButton()
+        self.replace_hint = QLabel()  # corrupt files fail again on rerun: replace them
+        self.replace_hint.setProperty("role", "body")
+        self.replace_hint.setProperty("tone", "muted")
         failed_row.addWidget(self.failed_label, 1)
         failed_row.addWidget(self.retry_button)
+        failed_row.addWidget(self.replace_hint)
         self._failed_box = QWidget()
         self._failed_box.setLayout(failed_row)
         left.addWidget(self._failed_box)
+        missing_row = QHBoxLayout()
+        self.missing_label = QLabel()
+        self.missing_label.setProperty("role", "body")
+        self.missing_label.setProperty("tone", "error")
+        self.missing_label.setWordWrap(True)
+        self.missing_retry_button = QPushButton()
+        missing_row.addWidget(self.missing_label, 1)
+        missing_row.addWidget(self.missing_retry_button)
+        self._missing_box = QWidget()
+        self._missing_box.setLayout(missing_row)
+        left.addWidget(self._missing_box)
         self.saved_label = QLabel()
         self.saved_label.setProperty("role", "body")
         self.saved_label.setProperty("tone", "muted")
@@ -115,6 +130,7 @@ class AnalysisScreen(QWidget):
         self.stop_button.clicked.connect(vm.stop)
         self.resume_button.clicked.connect(vm.resume)
         self.retry_button.clicked.connect(vm.resume)
+        self.missing_retry_button.clicked.connect(vm.resume)
         self.error_banner.action.connect(lambda _key: vm.resume())
         self.minimize_button.clicked.connect(lambda: self._notifier.minimize_to_tray(self.window()))
         self.notify_check.toggled.connect(lambda on: setattr(vm, "notify_when_done", on))
@@ -146,9 +162,22 @@ class AnalysisScreen(QWidget):
         self._offline_note.setVisible(running)
         failed = [] if running else vm.failed_files
         self._failed_box.setVisible(bool(failed) and not vm.all_failed)
+        self.retry_button.setVisible(vm.failed_retryable)
+        self.replace_hint.setVisible(not vm.failed_retryable)
         self.failed_label.setText(
             QCoreApplication.translate("AnalysisScreen", "Не удалось проанализировать: %1").replace(
                 "%1", ", ".join(failed)
+            )
+        )
+        missing = [] if running else vm.missing_files
+        self._missing_box.setVisible(bool(missing))
+        self.missing_label.setText(
+            "\n".join(
+                QCoreApplication.translate(
+                    "AnalysisScreen",
+                    "Файл не найден: %1. Подключите диск с ним или замените файл.",
+                ).replace("%1", name)
+                for name in missing
             )
         )
         self._render_banner()
@@ -212,6 +241,10 @@ class AnalysisScreen(QWidget):
             QCoreApplication.translate("AnalysisScreen", "Продолжить анализ")
         )
         self.retry_button.setText(QCoreApplication.translate("AnalysisScreen", "Повторить"))
+        self.missing_retry_button.setText(QCoreApplication.translate("AnalysisScreen", "Повторить"))
+        self.replace_hint.setText(
+            QCoreApplication.translate("AnalysisScreen", "Замените файл на шаге «Файлы».")
+        )
         self.saved_label.setText(
             QCoreApplication.translate("AnalysisScreen", "Пройденные этапы сохранены")
         )

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QByteArray, QEvent, Qt
-from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtCore import QByteArray, QEvent, QRectF, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QLabel, QWidget
 
 from toystudio.app.theme.apply import token
+from toystudio.app.theme.generated import tokens
+
+APP_ICON_SIZE = 256
 
 _BODY: dict[str, str] = {
     "spinner": '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
@@ -57,6 +60,22 @@ def pixmap(name: str, color: str, size: int = 16) -> QPixmap:
 
 def icon(name: str, color: str, size: int = 16) -> QIcon:
     return QIcon(pixmap(name, color, size))
+
+
+def app_icon(size: int = APP_ICON_SIZE) -> QIcon:
+    """Window and tray icon: the film glyph on a garnet rounded square (theme-independent)."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(tokens.DARK["garnet-500"]))
+    p.drawRoundedRect(QRectF(0, 0, size, size), size * 0.22, size * 0.22)
+    inset = size * 0.18
+    glyph = QSvgRenderer(QByteArray(_svg("film", tokens.DARK["ink-on-accent"])))
+    glyph.render(p, QRectF(inset, inset, size - 2 * inset, size - 2 * inset))
+    p.end()
+    return QIcon(pm)
 
 
 class IconLabel(QLabel):

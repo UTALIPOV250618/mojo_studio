@@ -579,3 +579,39 @@ def test_layout_fits_1280x720(qtbot, vm, jobs, tmp_path):
     left = s.name_edit.mapTo(s, s.name_edit.rect().topRight()).x()
     assert left < s.width() * 0.45
     assert s.video_zone.height() > s.music_zone.height()
+
+
+def test_screen_shortage_after_creation_offers_no_copy_and_recheck(
+    qtbot, vm, jobs, tmp_path, monkeypatch
+):
+    # ruling R15: once the project exists there is no folder choice
+    s = new_screen(qtbot, vm)
+    s.resize(1280, 640)
+    s.show()
+    vm.copy = True
+    vm.add_files(MediaKind.VIDEO, [make_file(tmp_path, "a.mp4")])
+    media_done(vm, jobs, "a.mp4")
+    finish_import(vm, jobs)
+    monkeypatch.setattr(vm_mod, "free_bytes", lambda p: 0)
+    vm.recheck()
+    buttons = s.error_banner.action_buttons()
+    assert [b.text() for b in buttons] == ["Не копировать", "Проверить снова"]
+    buttons[0].click()
+    assert vm.copy is False
+    assert [m.copied for m in vm._store.list_media()] == [False]
+
+
+def test_screen_failed_import_retry_click_reruns_import(qtbot, vm, jobs, tmp_path):
+    # ruling R16
+    s = new_screen(qtbot, vm)
+    s.resize(1280, 640)
+    s.show()
+    vm.add_files(MediaKind.VIDEO, [make_file(tmp_path, "a.mp4")])
+    jobs.failed.emit(import_id(vm), "crashed", "boom")
+    assert s.error_banner.isVisible()
+    assert s.error_banner._title.text() == "Не удалось проверить файлы."
+    buttons = s.error_banner.action_buttons()
+    assert [b.text() for b in buttons] == ["Повторить"]
+    buttons[0].click()
+    assert [j for j, _ in jobs.started] == [import_id(vm), import_id(vm)]
+    assert vm.import_failure is None

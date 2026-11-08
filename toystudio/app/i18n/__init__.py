@@ -11,6 +11,8 @@ from typing import Literal
 
 from PySide6.QtCore import QCoreApplication, QTranslator
 
+from toystudio.engine.media.ffmpeg import popen_flags
+
 log = logging.getLogger(__name__)
 _DIR = Path(__file__).resolve().parent
 _translator: QTranslator | None = None
@@ -40,7 +42,12 @@ def build_translations() -> Path:
     if not ts.exists():  # frozen app: prebuilt .qm is shipped next to the module
         return qm
     if not qm.exists() or qm.stat().st_mtime < ts.stat().st_mtime:
-        subprocess.run([_lrelease(), str(ts), "-qm", str(qm)], check=True, capture_output=True)
+        subprocess.run(
+            [_lrelease(), str(ts), "-qm", str(qm)],
+            check=True,
+            capture_output=True,
+            creationflags=popen_flags(),
+        )
     return qm
 
 

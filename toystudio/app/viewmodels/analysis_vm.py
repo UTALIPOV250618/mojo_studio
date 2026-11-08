@@ -34,6 +34,7 @@ STOP_GRACE_MS = 10_000
 SYNC_SHARE = 1.0  # percentage points of the overall bar reserved for camera sync
 _MEASURED = (StageName.PROBE, StageName.PROXY, StageName.SCENES, StageName.QUALITY)
 _FINISHED = (StageState.DONE, StageState.SKIPPED)
+_SYNC_FINISHED = (*_FINISHED, StageState.FAILED)  # a failed camera sync does not block the result
 _ENDED_BY_USER = ("stopped", "cancelled")
 
 # key -> (stages of every file, includes project-level SYNC); None = arrives in phase 2b
@@ -59,6 +60,7 @@ class StageView:
 class _Snapshot:
     name: str = ""
     files: list[MediaRow] = field(default_factory=list)
+    missing: list[MediaRow] = field(default_factory=list)  # source gone (drive unplugged)
     runs: dict[tuple[int, StageName], StageRun] = field(default_factory=dict)
     scene_cuts: int = 0
     labels: list[QualityLabel] = field(default_factory=list)
@@ -109,6 +111,8 @@ class AnalysisVM(QObject):
         self.overall_percent = 0.0
         self.eta_text: str | None = None
         self.failed_files: list[str] = []
+        self.failed_retryable = False  # False: every failure is a corrupt file to replace
+        self.missing_files: list[str] = []
         self.all_failed = False
         jobs.progress.connect(self._on_progress)
         jobs.event.connect(self._on_event)
@@ -128,7 +132,8 @@ class AnalysisVM(QObject):
 
     @property
     def done(self) -> bool:
-        return not self._active and self._snap.step_done
+        """Finished, and no file waits for its drive to come back."""
+        return not self._active and self._snap.step_done and not self._snap.missing
 
     @property
     def can_resume(self) -> bool:
@@ -237,7 +242,8 @@ class AnalysisVM(QObject):
         self._remaining_s = None
         self._live.clear()
         self._reload()
-        self._set_status("analysis_done" if self._snap.step_done else "analysis")
+        # a missing file keeps the card on "analysis" until its drive is back
+        self._set_status("analysis_done" if self.done else "analysis")
         self._compute()
         self.changed.emit()
 
@@ -269,6 +275,9 @@ class AnalysisVM(QObject):
                     and (r := snap.runs.get((m.id, StageName.PROBE))) is not None
                     and r.state is StageState.FAILED
                 )
+            ]
+            snap.missing = [
+                m for m in store.list_media(MediaKind.VIDEO) if m.status is MediaStatus.MISSING
             ]
             snap.scene_cuts = store.scene_cut_count()
             for m in snap.files:
@@ -321,7 +330,7 @@ class AnalysisVM(QObject):
         sync = self._sync_state() if with_sync else StageState.DONE
         if "running" in states or sync is StageState.RUNNING:
             return "running"
-        if all(s in ("done", "failed") for s in states) and sync in _FINISHED:
+        if all(s in ("done", "failed") for s in states) and sync in _SYNC_FINISHED:
             return "done"
         return "waiting"
 
@@ -352,7 +361,7 @@ class AnalysisVM(QObject):
     def _compute(self) -> None:
         snap = self._snap
         measured = self._fraction(_MEASURED)
-        sync_done = self._sync_state() in _FINISHED
+        sync_done = self._sync_state() in _SYNC_FINISHED
         if snap.files:
             self.overall_percent = round(
                 (100.0 - SYNC_SHARE) * measured + (SYNC_SHARE if sync_done else 0.0), 2
@@ -364,7 +373,11 @@ class AnalysisVM(QObject):
             if self._active and self._remaining_s is not None
             else None
         )
-        self.failed_files = [m.path.name for m in snap.files if self._file_failed(m.id)]
+        failed = [m for m in snap.files if self._file_failed(m.id)]
+        self.failed_files = [m.path.name for m in failed]
+        # a corrupt file fails again on every rerun: only replacing it on screen 2 helps
+        self.failed_retryable = any(m.status is not MediaStatus.CORRUPT for m in failed)
+        self.missing_files = [m.path.name for m in snap.missing]
         self.all_failed = bool(snap.files) and len(self.failed_files) == len(snap.files)
         views: list[StageView] = []
         for key, names, with_sync in _UI_STAGES:

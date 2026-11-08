@@ -258,8 +258,8 @@ class Shell(QMainWindow):
         self.taskbar.set_progress(active[0].overall_percent if active else None)
 
     def _on_analysis_finished(self, vm: AnalysisVM) -> None:
-        if self._closing or not vm.notify_when_done or vm.all_failed:
-            return
+        if self._closing or not vm.notify_when_done or vm.all_failed or vm.missing_files:
+            return  # nothing to celebrate yet: screen 3 lists what went wrong
         body = QCoreApplication.translate("AnalysisScreen", "Анализ «%1» готов").replace(
             "%1", vm.project_name
         )
