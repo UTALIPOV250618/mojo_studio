@@ -49,6 +49,7 @@ class ProjectsVM(QObject):
         self._text = ""
         self._status: str | None = None
         self.items: list[ProjectItem] = []
+        self.last_error: str | None = None
 
     # ---- listing
     def reload(self) -> None:
@@ -121,8 +122,14 @@ class ProjectsVM(QObject):
         root = root.resolve()
         if self.is_busy(root):
             return False
+        self.last_error = None
         if (root / "project.db").is_file():
-            shutil.rmtree(root)
+            try:
+                shutil.rmtree(root)
+            except OSError as e:  # locked file on Windows: keep the entry, report to the user
+                self.last_error = str(e)
+                self.reload()
+                return False
         self._app.remove_project(root)
         self._progress.pop(root, None)
         self.reload()

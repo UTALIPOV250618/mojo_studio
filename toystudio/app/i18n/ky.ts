@@ -273,6 +273,11 @@
         <translation type="unfinished">ky</translation>
         <translatorcomment>needs native-speaker review</translatorcomment>
     </message>
+    <message>
+        <source>Не удалось удалить проект — закройте программы, которые используют его файлы, и попробуйте снова.</source>
+        <translation type="unfinished">Долбоорду өчүрүү мүмкүн болгон жок — файлдарын колдонуп жаткан программаларды жаап, кайра аракет кылыңыз.</translation>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+    </message>
 </context>
 <context>
     <name>ToiKind</name>

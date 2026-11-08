@@ -250,7 +250,8 @@ class ProjectsScreen(QWidget):
         text = QCoreApplication.translate(
             "ProjectsScreen", "Проект «%1» будет удалён вместе с результатами анализа."
         ).replace("%1", item.name if item else root.name)
-        if item is not None and item.has_copies:
+        has_media = (root / "media").is_dir() and any((root / "media").iterdir())
+        if (item is not None and item.has_copies) or has_media:
             text += " " + QCoreApplication.translate(
                 "ProjectsScreen", "Копии видео в папке проекта тоже удалятся."
             )
@@ -265,8 +266,23 @@ class ProjectsScreen(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if answer == QMessageBox.StandardButton.Yes:
-            self.vm.delete(root)
+        if (
+            answer == QMessageBox.StandardButton.Yes
+            and not self.vm.delete(root)
+            and self.vm.last_error is not None
+        ):
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle(QCoreApplication.translate("ProjectsScreen", "Удалить проект"))
+            box.setText(
+                QCoreApplication.translate(
+                    "ProjectsScreen",
+                    "Не удалось удалить проект — закройте программы, "
+                    "которые используют его файлы, и попробуйте снова.",
+                )
+            )
+            box.setDetailedText(self.vm.last_error)
+            box.exec()
 
     # ---- drag and drop: the whole window is the drop zone
     def dragEnterEvent(self, e: QDragEnterEvent) -> None:

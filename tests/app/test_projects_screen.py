@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QInputDialog, QMessageBox
 from toystudio.app.i18n import install_language
 from toystudio.app.screens import projects as projects_mod
 from toystudio.app.screens.projects import ProjectsScreen
+from toystudio.app.viewmodels import projects_vm as vm_mod
 from toystudio.app.viewmodels.projects_vm import ProjectsVM
 from toystudio.core.models import (
     STAGE_ORDER,
@@ -269,3 +270,45 @@ def test_grid_columns_at_1280_and_1920(qtbot, app_store, tmp_path, width, cols):
     assert screen.columns() == cols
     xs = {screen.card_at(i).mapTo(screen, screen.card_at(i).rect().topLeft()).x() for i in range(5)}
     assert len(xs) == cols
+
+
+def test_delete_failure_keeps_project_and_shows_message(qtbot, app_store, tmp_path, monkeypatch):
+    root = make_project(tmp_path, app_store, "P")
+    _vm, screen = new_screen(qtbot, app_store)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+
+    def boom(_p):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(vm_mod.shutil, "rmtree", boom)
+    shown = []
+    monkeypatch.setattr(
+        QMessageBox, "exec", lambda self: shown.append((self.text(), self.detailedText()))
+    )
+    screen.delete_project(root)
+    assert len(app_store.list_projects()) == 1
+    assert screen.card_roots() == [root.resolve()]
+    assert shown[0][0].startswith("Не удалось удалить проект")
+    assert "locked" in shown[0][1]
+
+
+def test_fallback_project_with_media_folder_gets_copies_warning(
+    qtbot, app_store, tmp_path, monkeypatch
+):
+    root = tmp_path / "projects" / "Old"
+    (root / "media").mkdir(parents=True)
+    (root / "media" / "v.mp4").write_bytes(b"x")
+    con = sqlite3.connect(root / "project.db")
+    con.execute("PRAGMA user_version=1")
+    con.commit()
+    con.close()
+    app_store.register_project(root, "Old", "files", datetime(2026, 11, 1))
+    _vm, screen = new_screen(qtbot, app_store)
+    asked = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No,
+    )
+    screen.delete_project(root)
+    assert "Копии видео" in asked[0]
