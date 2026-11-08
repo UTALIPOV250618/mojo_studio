@@ -1,10 +1,11 @@
-"""Synthetic media helpers for tests (lavfi test pattern + sine tone)."""
+"""Synthetic media helpers for tests (lavfi test pattern + sine tone or noise bursts)."""
 
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 
@@ -57,3 +58,62 @@ def make_truncated(src: Path, dst: Path, keep: float = 0.5) -> Path:
     data = src.read_bytes()
     dst.write_bytes(data[: int(len(data) * keep)])
     return dst
+
+
+def noise_burst_track(total_s: float, *, seed: int = 1, rate: int = 16_000) -> np.ndarray:
+    """Deterministic 'speech and music': white noise gated by random loud bursts (int16)."""
+    rng = np.random.default_rng(seed)
+    n_env = round(total_s * 100)  # 100 Hz gain curve
+    env = 0.02 + 0.01 * rng.random(n_env)
+    pos = 0
+    while pos < n_env:
+        pos += int(rng.integers(20, 200))
+        length = min(int(rng.integers(10, 150)), n_env - pos)
+        if length <= 0:
+            break
+        env[pos : pos + length] += rng.uniform(0.1, 0.6) * (0.5 + rng.random(length))
+        pos += length
+    gain = np.repeat(env, rate // 100)
+    carrier = rng.uniform(-1.0, 1.0, gain.size)
+    return np.clip(gain * carrier * 32767, -32768, 32767).astype(np.int16)
+
+
+def make_noise_clip(
+    path: Path,
+    *,
+    duration_s: float,
+    start_s: float = 0.0,
+    track_s: float | None = None,
+    seed: int = 1,
+    size: str = "320x180",
+    fps: int = 25,
+) -> Path:
+    """Clip whose audio is [start_s, start_s + duration_s) of a seeded noise-burst track.
+
+    Two clips with the same seed and track_s share one track, so the second can be a
+    piece of the first shifted by start_s (a sine tone has a flat envelope and cannot sync).
+    """
+    import wave
+
+    rate = 16_000
+    total = track_s if track_s is not None else start_s + duration_s
+    track = noise_burst_track(total, seed=seed, rate=rate)
+    piece = track[round(start_s * rate) : round((start_s + duration_s) * rate)]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wav = path.with_name(path.stem + ".noise.wav")
+    with wave.open(str(wav), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(piece.tobytes())
+    try:
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y",
+             "-f", "lavfi", "-i", f"testsrc2=size={size}:rate={fps}:duration={duration_s}",
+             "-i", str(wav), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+             "-g", str(fps), "-c:a", "aac", "-b:a", "128k", "-shortest", str(path)],
+            check=True, capture_output=True,
+        )  # fmt: skip
+    finally:
+        wav.unlink(missing_ok=True)
+    return path

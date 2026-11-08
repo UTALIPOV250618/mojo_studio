@@ -1,0 +1,222 @@
+"""Worker job `analyze`: per-stage checkpoints, stop/resume, sync, progress and ETA."""
+
+from datetime import date
+from pathlib import Path
+
+from tests.jobs.worker_run import events, is_stage, run_raw, run_until, run_worker
+from tests.media_fixtures import make_clip, make_noise_clip, make_truncated, needs_ffmpeg
+from toystudio.core.models import (
+    STAGE_ORDER,
+    MediaKind,
+    MediaStatus,
+    StageName,
+    StageState,
+    ToiKind,
+)
+from toystudio.engine.media.probe import probe_media
+from toystudio.jobs.protocol import Done, Failed, Progress
+from toystudio.storage.app_store import AppStore
+from toystudio.storage.project_store import ProjectStore
+
+pytestmark = needs_ffmpeg
+
+FINISHED = (StageState.DONE, StageState.SKIPPED)
+
+
+def _project(tmp_path: Path, *clips: Path) -> Path:
+    root = tmp_path / "Той Студия" / "Свадьба Айбек и Нурайым"
+    s = ProjectStore.create(root, "Свадьба", ToiKind.WEDDING, date(2026, 9, 1))
+    try:
+        for c in clips:
+            s.add_media(c, MediaKind.VIDEO, c.stat().st_size if c.exists() else 1, False)
+    finally:
+        s.close()
+    return root
+
+
+def _clip(tmp_path: Path, name: str, duration_s: float = 4) -> Path:
+    return make_clip(tmp_path / "src" / name, duration_s=duration_s, size="320x180")
+
+
+def test_analyze_two_files_and_sync(tmp_path: Path) -> None:
+    # second clip = the same noise-burst track from 2 s: overlap 38 s >= 30 s (sync default)
+    a = make_noise_clip(tmp_path / "src" / "камера 1.mp4", duration_s=40, track_s=40, seed=7)
+    b = make_noise_clip(
+        tmp_path / "src" / "камера 2.mp4", duration_s=38, start_s=2, track_s=40, seed=7
+    )
+    project = _project(tmp_path, a, b)
+    app_db = tmp_path / "app.db"
+    msgs: list = []
+    s = run_worker("analyze", project, app_db=app_db, msgs=msgs)
+    try:
+        stages = s.stages()
+        assert {(st.media_id, st.stage) for st in stages} == {
+            *((mid, st) for mid in (1, 2) for st in STAGE_ORDER),
+            (0, StageName.SYNC),
+        }
+        assert all(st.state in FINISHED for st in stages)
+        assert s.stage(1, StageName.SPEECH).state is StageState.SKIPPED
+        assert s.stage(1, StageName.PROXY).state is StageState.DONE
+        rows = {m.id: m for m in s.list_media()}
+        assert rows[1].sync_offset_us == 0
+        assert abs(rows[2].sync_offset_us - 2_000_000) <= 20_000
+        assert rows[2].sync_confidence >= 6.0
+        assert rows[1].info is not None  # PROBE filled info without a prior import
+        assert s.step() == "analysis_done"
+    finally:
+        s.close()
+    assert (project / "cache" / "proxy" / "1.mp4").exists()
+    assert (project / "cache" / "proxy" / "2.mp4").exists()
+    card = project / "cache" / "thumbs" / "card.jpg"
+    assert card.exists() and card.read_bytes()[:2] == b"\xff\xd8"
+    assert not list((project / "cache").rglob("*.part"))
+
+    proxy = [m for m in msgs if isinstance(m, Progress) and m.stage == "proxy"]
+    assert {m.media_id for m in proxy} == {"1", "2"}
+    assert proxy[-1].done == proxy[-1].total and abs(proxy[-1].total - 38.0) < 0.5
+    found = {(e["media_id"], e["stage"]): e["found"] for e in events(msgs, "stage")
+             if e["state"] == "done"}  # fmt: skip
+    assert isinstance(found[(1, "scenes")], int) and isinstance(found[(1, "quality")], int)
+    assert found[(1, "proxy")] is None
+    eta = events(msgs, "eta")
+    assert eta and all(isinstance(e["remaining_s"], float) and e["remaining_s"] >= 0 for e in eta)
+    app = AppStore(app_db)
+    try:
+        assert app.speed("proxy", "light") is not None
+    finally:
+        app.close()
+
+
+def test_analyze_continues_after_corrupt(tmp_path: Path) -> None:
+    good = _clip(tmp_path, "good.mp4")
+    corrupt = make_truncated(good, tmp_path / "src" / "битый.mp4", keep=0.5)
+    # passes the import (info set from the good file) but ffmpeg cannot decode it
+    broken = make_truncated(good, tmp_path / "src" / "сломан.mp4", keep=0.4)
+    project = _project(tmp_path, corrupt, broken, good)
+    s = ProjectStore.open(project)
+    s.set_media_info(2, probe_media(good))
+    s.close()
+
+    msgs: list = []
+    s = run_worker("analyze", project, app_db=tmp_path / "app.db", msgs=msgs)
+    try:
+        rows = {m.id: m for m in s.list_media()}
+        assert rows[1].status is MediaStatus.CORRUPT
+        probe1 = s.stage(1, StageName.PROBE)
+        assert probe1.state is StageState.FAILED and probe1.error_code == "corrupt"
+        assert s.stage(1, StageName.PROXY).state is StageState.PENDING
+        proxy2 = s.stage(2, StageName.PROXY)
+        assert proxy2.state is StageState.FAILED and proxy2.error_code == "ffmpeg"
+        assert all(s.stage(3, st).state in FINISHED for st in STAGE_ORDER)
+        assert s.stage(0, StageName.SYNC).state is StageState.DONE
+    finally:
+        s.close()
+    assert {"media_id": 1, "status": "corrupt"} in events(msgs, "media")
+    assert any(
+        e["media_id"] == 2 and e["stage"] == "proxy" and e["state"] == "failed"
+        for e in events(msgs, "stage")
+    )
+    assert not (project / "cache" / "proxy" / "2.mp4").exists()
+    assert (project / "cache" / "proxy" / "3.mp4").exists()
+
+
+def test_analyze_all_corrupt_ends_analysis_done(tmp_path: Path) -> None:
+    good = _clip(tmp_path, "good.mp4", duration_s=2)
+    corrupt = make_truncated(good, tmp_path / "src" / "битый.mp4", keep=0.5)
+    project = _project(tmp_path, corrupt)
+    s = run_worker("analyze", project, app_db=tmp_path / "app.db")
+    try:
+        assert s.list_media()[0].status is MediaStatus.CORRUPT
+        assert s.step() == "analysis_done"
+    finally:
+        s.close()
+
+
+def test_analyze_marks_missing_file(tmp_path: Path) -> None:
+    gone = _clip(tmp_path, "пропал.mp4", duration_s=2)
+    good = _clip(tmp_path, "good.mp4", duration_s=3)
+    project = _project(tmp_path, gone, good)
+    gone.unlink()
+    msgs: list = []
+    s = run_worker("analyze", project, app_db=tmp_path / "app.db", msgs=msgs)
+    try:
+        rows = {m.id: m for m in s.list_media()}
+        assert rows[1].status is MediaStatus.MISSING
+        assert rows[2].status is MediaStatus.OK
+        assert all(s.stage(2, st).state in FINISHED for st in STAGE_ORDER)
+        assert s.stage(1, StageName.PROXY).state is StageState.PENDING
+        assert s.step() == "analysis_done"  # missing files do not block the wizard
+    finally:
+        s.close()
+    assert {"media_id": 1, "status": "missing"} in events(msgs, "media")
+
+
+def test_analyze_resumes_after_kill(tmp_path: Path) -> None:
+    first = _clip(tmp_path, "первый.mp4", duration_s=4)
+    second = _clip(tmp_path, "второй.mp4", duration_s=60)  # still in PROXY when killed
+    project = _project(tmp_path, first, second)
+    app_db = tmp_path / "app.db"
+
+    rc, msgs = run_until(
+        "analyze",
+        project,
+        app_db=app_db,
+        when=is_stage("proxy", "done", 1),
+        then=lambda proc: proc.kill(),
+    )
+    assert rc != 0 and not any(isinstance(m, Done) for m in msgs)
+
+    s = ProjectStore.open(project)  # running -> interrupted
+    try:
+        assert s.stage(1, StageName.PROXY).state is StageState.DONE
+        assert s.stage(2, StageName.PROXY).state in (StageState.PENDING, StageState.INTERRUPTED)
+        assert s.stage(0, StageName.SYNC).state is StageState.PENDING
+        assert s.step() == "analysis"
+    finally:
+        s.close()
+    proxy1 = project / "cache" / "proxy" / "1.mp4"
+    mtime = proxy1.stat().st_mtime_ns
+
+    msgs2: list = []
+    s = run_worker("analyze", project, app_db=app_db, msgs=msgs2)
+    try:
+        assert all(st.state in FINISHED for st in s.stages())
+        assert s.step() == "analysis_done"
+    finally:
+        s.close()
+    assert proxy1.stat().st_mtime_ns == mtime
+    assert not [
+        m for m in msgs2 if isinstance(m, Progress) and (m.stage, m.media_id) == ("proxy", "1")
+    ]
+    assert (project / "cache" / "proxy" / "2.mp4").exists()
+
+
+def test_analyze_stop_file_interrupts_stage(tmp_path: Path) -> None:
+    clip = _clip(tmp_path, "длинный.mp4", duration_s=60)
+    project = _project(tmp_path, clip)
+    stop = tmp_path / "stop.flag"
+
+    rc, msgs = run_until(
+        "analyze",
+        project,
+        app_db=tmp_path / "app.db",
+        stop_file=stop,
+        when=is_stage("proxy", "running", 1),
+        then=lambda proc: stop.touch(),
+    )
+    assert rc == 1
+    assert msgs[-1] == Failed("stopped", "")
+    assert not any(isinstance(m, Done) for m in msgs)
+
+    s = ProjectStore.open(project)
+    try:
+        assert s.stage(1, StageName.PROBE).state is StageState.DONE
+        assert s.stage(1, StageName.PROXY).state is StageState.INTERRUPTED
+    finally:
+        s.close()
+    assert not (project / "cache" / "proxy" / "1.mp4").exists()
+    assert not list((project / "cache").rglob("*.part"))
+
+    stop.unlink()  # "Продолжить": the same job runs again and finishes
+    rc, msgs, _err = run_raw("analyze", project, app_db=tmp_path / "app.db", stop_file=stop)
+    assert rc == 0 and isinstance(msgs[-1], Done)
