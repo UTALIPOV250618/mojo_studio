@@ -312,3 +312,27 @@ def test_fallback_project_with_media_folder_gets_copies_warning(
     )
     screen.delete_project(root)
     assert "Копии видео" in asked[0]
+
+
+def test_failed_delete_can_be_retried(qtbot, app_store, tmp_path, monkeypatch):
+    root = make_project(tmp_path, app_store, "P")
+    (root / "media").mkdir()
+    (root / "media" / "v.mp4").write_bytes(b"x")
+    _vm, screen = new_screen(qtbot, app_store)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)
+    real = vm_mod.shutil.rmtree
+
+    def locked(path, *a, **k):
+        if Path(path).name == "media":
+            raise PermissionError("locked")
+        real(path, *a, **k)
+
+    with monkeypatch.context() as m:
+        m.setattr(vm_mod.shutil, "rmtree", locked)
+        screen.delete_project(root)
+    assert (root / "project.db").is_file()
+    assert len(app_store.list_projects()) == 1
+    screen.delete_project(root)
+    assert not root.exists()
+    assert app_store.list_projects() == []

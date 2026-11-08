@@ -31,6 +31,23 @@ class ProjectItem:
     has_copies: bool = False
 
 
+_DB_FILES = ("project.db-wal", "project.db-shm", "project.db.bak", "project.db")
+
+
+def _remove_project_dir(root: Path) -> None:
+    """Delete everything but the db files first, so project.db marks an unfinished delete."""
+    for child in root.iterdir():
+        if child.name in _DB_FILES:
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    for name in _DB_FILES:  # project.db last
+        (root / name).unlink(missing_ok=True)
+    root.rmdir()
+
+
 class ProjectsVM(QObject):
     changed = Signal()
     open_requested = Signal(Path, str)
@@ -119,13 +136,13 @@ class ProjectsVM(QObject):
 
     def delete(self, root: Path) -> bool:
         """Remove the project folder and its list entry; never touches videos outside it."""
+        self.last_error = None
         root = root.resolve()
         if self.is_busy(root):
             return False
-        self.last_error = None
         if (root / "project.db").is_file():
             try:
-                shutil.rmtree(root)
+                _remove_project_dir(root)
             except OSError as e:  # locked file on Windows: keep the entry, report to the user
                 self.last_error = str(e)
                 self.reload()

@@ -51,6 +51,13 @@ def columns_for(width: int) -> int:
     return 4 if width >= 1800 else 3 if width >= 1350 else 2
 
 
+def _has_media(root: Path) -> bool:
+    try:
+        return (root / "media").is_dir() and any((root / "media").iterdir())
+    except OSError:
+        return True  # unknown: show the stronger warning
+
+
 def video_files(paths: list[Path]) -> list[Path]:
     """Videos among dropped files; folders are searched recursively."""
     out: list[Path] = []
@@ -250,7 +257,7 @@ class ProjectsScreen(QWidget):
         text = QCoreApplication.translate(
             "ProjectsScreen", "Проект «%1» будет удалён вместе с результатами анализа."
         ).replace("%1", item.name if item else root.name)
-        has_media = (root / "media").is_dir() and any((root / "media").iterdir())
+        has_media = _has_media(root)
         if (item is not None and item.has_copies) or has_media:
             text += " " + QCoreApplication.translate(
                 "ProjectsScreen", "Копии видео в папке проекта тоже удалятся."
