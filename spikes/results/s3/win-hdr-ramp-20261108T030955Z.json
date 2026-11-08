@@ -1,0 +1,32 @@
+{
+  "hdr_ramp": {
+    "fallback": {
+      "p1": 18.0,
+      "p50": 125.0,
+      "p99": 232.0,
+      "clipped_frac": 0.004166666666666667,
+      "black_level": 18.105262756347656,
+      "monotonic_drops": 0.0,
+      "highlight_separation": 22.025634765625,
+      "pass": true
+    },
+    "zscale": {
+      "p1": 19.0,
+      "p50": 122.5,
+      "p99": 233.0,
+      "clipped_frac": 0.009375,
+      "black_level": 18.263158798217773,
+      "monotonic_drops": 0.0,
+      "highlight_separation": 20.923080444335938,
+      "pass": true
+    }
+  },
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "ram_bytes": 6287331328,
+    "gpu": "NVIDIA GeForce GTX 1650; AMD Radeon(TM) Graphics"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "6e506ee"
+}
