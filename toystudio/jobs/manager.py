@@ -51,7 +51,16 @@ class JobManager(QObject):
         self._pump()
 
     def running(self) -> list[str]:
+        """Jobs whose worker process is running (queued ones are not included)."""
         return list(self._active)
+
+    def pending(self) -> list[str]:
+        """Jobs waiting in the queue for a free slot."""
+        return [j.job_id for j in self._queue]
+
+    def is_active(self, job_id: str) -> bool:
+        """Running or queued: the project of such a job is busy."""
+        return job_id in self._active or any(j.job_id == job_id for j in self._queue)
 
     def cancel(self, job_id: str) -> None:
         for job in self._queue:

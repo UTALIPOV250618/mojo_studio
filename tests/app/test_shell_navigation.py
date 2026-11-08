@@ -4,7 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal
 from PySide6.QtWidgets import QMessageBox
 
 from toystudio.app.main import app_paths
@@ -31,6 +31,7 @@ class FakeJobs(QObject):
     def __init__(self) -> None:
         super().__init__()
         self.active: list[str] = []
+        self.queued: list[str] = []
         self.started: list[str] = []
         self.shutdowns = 0
         self.stubborn = False
@@ -42,7 +43,21 @@ class FakeJobs(QObject):
         self.active.append(job_id)
 
     def cancel(self, job_id):
+        if job_id in self.queued:
+            self.queued.remove(job_id)
+            self.failed.emit(job_id, "cancelled", "")
+            return
         self.active = [j for j in self.active if j != job_id]
+
+    def pending(self):
+        return list(self.queued)
+
+    def is_active(self, job_id):
+        return job_id in self.running() or job_id in self.queued
+
+    def finish(self, job_id):
+        self.active.remove(job_id)
+        self.finished.emit(job_id)
 
     def _stopped(self, job_id: str) -> bool:
         kind, _, root = job_id.partition(":")
@@ -55,14 +70,18 @@ class FakeJobs(QObject):
     def shutdown(self):
         self.shutdowns += 1
         self.active.clear()
+        self.queued.clear()
 
 
 class FakeNotifier:
     def __init__(self) -> None:
         self.minimized = 0
+        self.shown: list[tuple[str, str]] = []
+        self.click = None
 
     def notify(self, title, body, on_click):
-        pass
+        self.shown.append((title, body))
+        self.click = on_click
 
     def minimize_to_tray(self, window):
         self.minimized += 1
@@ -97,6 +116,31 @@ def _project(w, name: str, *, video: bool) -> Path:
     w.app_store.register_project(root, name, "analysis" if video else "files", datetime.now())
     w.projects_vm.reload()
     return root
+
+
+class FakeTaskbar:
+    def __init__(self) -> None:
+        self.values: list[float | None] = []
+
+    def set_progress(self, percent):
+        self.values.append(percent)
+
+
+def _finish_all_stages(root: Path) -> None:
+    store = ProjectStore.open(root)  # test only: the fake worker "wrote" its results
+    try:
+        for m in store.list_media(MediaKind.VIDEO):
+            for st in StageName:
+                if st is not StageName.SYNC:
+                    store.set_stage(m.id, st, StageState.DONE)
+        store.set_stage(0, StageName.SYNC, StageState.DONE)
+    finally:
+        store.close()
+
+
+def _card(w, root: Path):
+    roots = w.projects_screen.card_roots()
+    return w.projects_screen.card_at(roots.index(root))
 
 
 def _stage_state(root: Path) -> StageState:
@@ -322,3 +366,79 @@ def test_mouse_click_on_card_opens_project(shell, qtbot):
     qtbot.mouseClick(card, Qt.MouseButton.LeftButton)
     assert isinstance(shell.current_screen(), AnalysisScreen)
     assert shell.analysis_screen.vm.root == root
+
+
+# ---- R20: running analyses survive navigation; queued jobs count as busy
+def test_analysis_a_finishes_while_b_is_viewed(shell, jobs):
+    shell.taskbar = FakeTaskbar()
+    a = _project(shell, "А", video=True)
+    b = _project(shell, "Б", video=True)
+    jobs.active.append(f"analyze:{a}")
+    shell.show_new_project(root=a)
+    shell.new_project_screen.vm.analysis_started.emit(a)
+    jobs.event.emit(f"analyze:{a}", Event("eta", {"remaining_s": 12.0}))
+    assert shell.taskbar.values[-1] is not None
+    shell.top_bar.click_projects()
+    jobs.queued.append(f"analyze:{b}")
+    shell.projects_vm.open(b)
+    assert shell.analysis_screen.vm.root == b
+    assert set(shell.analyses) == {a, b}
+    _finish_all_stages(a)
+    jobs.finish(f"analyze:{a}")
+    assert set(shell.analyses) == {b}
+    assert [r.status for r in shell.app_store.list_projects() if r.root == a] == ["analysis_done"]
+    assert shell.notifier.shown == [("Той Студия", "Анализ «А» готов")]
+    assert shell.taskbar.values[-1] is None
+    shell.top_bar.click_projects()
+    assert _card(shell, a)._badge.text() == "Анализ завершён"
+    shell.notifier.click()
+    assert shell.analysis_screen.vm.root == a and shell.analysis_screen.vm.done
+
+
+def test_card_progress_follows_a_after_leaving_its_screen(shell, jobs):
+    a = _project(shell, "А", video=True)
+    jobs.active.append(f"analyze:{a}")
+    shell.show_analysis(a)
+    shell.top_bar.click_projects()
+    assert shell.analysis_screen is not None  # the screen may go, the VM must stay
+    shell.show_analysis(_project(shell, "Б", video=True))
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)  # dropped screens go
+    jobs.event.emit(f"analyze:{a}", Event("eta", {"remaining_s": 7.0}))
+    assert shell.projects_vm.item(a).eta_s == 7.0
+
+
+def test_no_notification_when_unchecked(shell, jobs):
+    a = _project(shell, "А", video=True)
+    jobs.active.append(f"analyze:{a}")
+    shell.show_analysis(a)
+    shell.analysis_screen.notify_check.setChecked(False)
+    shell.top_bar.click_projects()
+    _finish_all_stages(a)
+    jobs.finish(f"analyze:{a}")
+    assert shell.notifier.shown == []
+
+
+def test_queued_project_is_busy(shell, jobs, monkeypatch):
+    a = _project(shell, "А", video=True)
+    b = _project(shell, "Б", video=True)
+    jobs.active.append(f"analyze:{a}")
+    jobs.queued.append(f"analyze:{b}")
+    assert shell.is_busy(b)
+    assert shell.projects_vm.delete(b) is False and (b / "project.db").is_file()
+    assert shell.projects_vm.rename(b, "Новое") is False
+    shell.show_new_project(root=b)
+    assert shell.new_project_screen.vm._store is None  # attached read-only
+    assert _stage_state(b) is StageState.RUNNING
+    shell.show_analysis(b)
+    assert shell.analysis_screen.vm.running
+    assert not shell.analysis_screen.resume_button.isVisibleTo(shell)
+
+
+def test_close_stop_cancels_queued_analysis(shell, jobs):
+    a = _project(shell, "А", video=True)
+    b = _project(shell, "Б", video=True)
+    jobs.active.append(f"analyze:{a}")
+    jobs.queued.append(f"analyze:{b}")
+    shell.show()
+    assert shell.close()
+    assert jobs.queued == [] and jobs.shutdowns == 1

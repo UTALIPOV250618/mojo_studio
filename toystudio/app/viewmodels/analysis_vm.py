@@ -95,7 +95,8 @@ class AnalysisVM(QObject):
         self._jobs = jobs
         self._app = app_store
         self.job_id = f"analyze:{root}"
-        self._active = assume_running or self.job_id in jobs.running()
+        self._active = assume_running or jobs.is_active(self.job_id)  # running or queued
+        self.notify_when_done = True
         self._stopping = False
         self._remaining_s: float | None = None
         self._live: dict[int, float] = {}
@@ -149,6 +150,9 @@ class AnalysisVM(QObject):
     # ---- commands
     def stop(self) -> None:
         if not self._active or self._stopping:
+            return
+        if self.job_id in self._jobs.pending():  # never started: drop it from the queue
+            self._jobs.cancel(self.job_id)
             return
         stop = stop_file_for(self.root, "analyze")
         stop.parent.mkdir(parents=True, exist_ok=True)

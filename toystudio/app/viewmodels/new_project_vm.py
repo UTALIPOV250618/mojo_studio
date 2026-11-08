@@ -306,14 +306,13 @@ class NewProjectVM(QObject):
         self._date_touched = True  # the saved date wins over the clip's creation time
         self._copy = summary.has_copies
         self._status = summary.step
-        running = self._jobs.running()
-        self._import_active = self._import_id() in running
+        self._import_active = self._jobs.is_active(self._import_id())
         self._open_if_idle()
         self._refresh()
 
     def _worker_running(self) -> bool:
-        running = self._jobs.running()
-        return self._import_id() in running or self._analyze_id() in running
+        """A worker of this project runs or is queued (it will write project.db)."""
+        return self._jobs.is_active(self._import_id()) or self._jobs.is_active(self._analyze_id())
 
     def _open_if_idle(self) -> None:
         if self._closed or self._store is not None or self.root is None:

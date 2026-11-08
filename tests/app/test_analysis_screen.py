@@ -33,6 +33,7 @@ class FakeJobs(QObject):
         self.started: list[tuple[str, list[str]]] = []
         self.cancelled: list[str] = []
         self.active: list[str] = []
+        self.queued: list[str] = []
 
     def start(self, job_id, argv):
         self.started.append((job_id, argv))
@@ -43,6 +44,12 @@ class FakeJobs(QObject):
 
     def running(self):
         return list(self.active)
+
+    def pending(self):
+        return list(self.queued)
+
+    def is_active(self, job_id):
+        return job_id in self.active or job_id in self.queued
 
 
 class FakeNotifier:
@@ -57,14 +64,6 @@ class FakeNotifier:
 
     def minimize_to_tray(self, window):
         self.minimized += 1
-
-
-class FakeTaskbar:
-    def __init__(self) -> None:
-        self.values: list[float | None] = []
-
-    def set_progress(self, percent):
-        self.values.append(percent)
 
 
 def info(duration_s=60) -> MediaInfo:
@@ -145,7 +144,7 @@ def emit_stage(jobs, project, mid, stage, state, found=None):
 def test_stage_texts_and_later_states(qtbot, project, jobs, app_store):
     apply_theme(QApplication.instance(), "dark")
     vm = make_vm(project, jobs, app_store)
-    screen = AnalysisScreen(vm, notifier=FakeNotifier(), taskbar=FakeTaskbar())
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
     qtbot.addWidget(screen)
     titles = [s.title for s in vm.stages]
     assert titles == [
@@ -208,7 +207,7 @@ def test_progress_of_other_job_is_ignored(qtbot, project, jobs, app_store):
 def test_stop_creates_stop_file_and_shows_resume(qtbot, project, jobs, app_store):
     root, _, _ = project
     vm = make_vm(project, jobs, app_store, delay=50)
-    screen = AnalysisScreen(vm, notifier=FakeNotifier(), taskbar=FakeTaskbar())
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
     qtbot.addWidget(screen)
     screen.show()
     assert screen.resume_button.isHidden()
@@ -243,54 +242,48 @@ def test_resume_restarts_analyze(qtbot, project, jobs, app_store):
     assert vm.running
 
 
-def test_finished_notifies_when_checked(qtbot, project, jobs, app_store):
+def test_finished_screen_shows_done_and_status(qtbot, project, jobs, app_store):
     _root, store, ids = project
-    notifier, taskbar = FakeNotifier(), FakeTaskbar()
     vm = make_vm(project, jobs, app_store)
-    screen = AnalysisScreen(vm, notifier=notifier, taskbar=taskbar)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
     qtbot.addWidget(screen)
-    assert screen.notify_check.isChecked()
     for st in (*[s for s in StageName if s not in (StageName.SYNC,)],):
         finish_stage(store, ids, st)
     store.set_stage(0, StageName.SYNC, StageState.DONE)
     finished = []
     vm.finished.connect(finished.append)
+    jobs.active.clear()
     jobs.finished.emit(job_id(project))
-    assert notifier.shown == [("Той Студия", "Анализ «Свадьба Айбек и Нурайым» готов")]
     assert finished == [0]
-    assert taskbar.values[-1] is None
     assert app_store.list_projects()[0].status == "analysis_done"
-    assert screen.done_label is not None
+    assert not screen.done_label.isHidden()
 
 
-def test_no_notification_when_unchecked(qtbot, project, jobs, app_store):
-    notifier = FakeNotifier()
+def test_notify_checkbox_drives_vm(qtbot, project, jobs, app_store):
     vm = make_vm(project, jobs, app_store)
-    screen = AnalysisScreen(vm, notifier=notifier, taskbar=FakeTaskbar())
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
     qtbot.addWidget(screen)
+    assert screen.notify_check.isChecked() and vm.notify_when_done
     screen.notify_check.setChecked(False)
-    jobs.finished.emit(job_id(project))
-    assert notifier.shown == []
+    assert vm.notify_when_done is False
+
+
+def test_stop_of_queued_job_cancels_it(qtbot, project, jobs, app_store):
+    jobs.queued.append(job_id(project))
+    vm = AnalysisVM(project[0], jobs, app_store)
+    assert vm.running and vm.can_resume is False
+    vm.stop()
+    assert jobs.cancelled == [job_id(project)]
+    assert not stop_file_for(project[0], "analyze").exists()
 
 
 def test_minimize_goes_to_tray(qtbot, project, jobs, app_store):
     notifier = FakeNotifier()
     vm = make_vm(project, jobs, app_store)
-    screen = AnalysisScreen(vm, notifier=notifier, taskbar=FakeTaskbar())
+    screen = AnalysisScreen(vm, notifier=notifier)
     qtbot.addWidget(screen)
     screen.minimize_button.click()
     assert notifier.minimized == 1
-
-
-def test_taskbar_follows_overall_percent(qtbot, project, jobs, app_store):
-    _root, store, ids = project
-    taskbar = FakeTaskbar()
-    vm = make_vm(project, jobs, app_store)
-    screen = AnalysisScreen(vm, notifier=FakeNotifier(), taskbar=taskbar)
-    qtbot.addWidget(screen)
-    finish_stage(store, ids, StageName.PROBE)
-    emit_stage(jobs, project, ids[0], StageName.PROBE, StageState.DONE)
-    assert taskbar.values[-1] is not None and taskbar.values[-1] > 0
 
 
 def test_taskbar_noop_off_windows(qtbot):
@@ -326,7 +319,7 @@ def test_reopen_interrupted_project_shows_resume(qtbot, project, jobs, app_store
     finish_stage(store, ids, StageName.PROBE)
     store.set_stage(ids[0], StageName.PROXY, StageState.INTERRUPTED)
     vm = make_vm(project, jobs, app_store, running=False)
-    screen = AnalysisScreen(vm, notifier=FakeNotifier(), taskbar=FakeTaskbar())
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
     qtbot.addWidget(screen)
     screen.show()
     assert not screen.resume_button.isHidden()
@@ -354,7 +347,7 @@ def test_failed_file_listed_and_retry(qtbot, project, jobs, app_store):
     store.set_stage(0, StageName.SYNC, StageState.DONE)
     vm = make_vm(project, jobs, app_store, running=False)
     assert vm.failed_files == ["IMG_0419.MP4"]
-    screen = AnalysisScreen(vm, notifier=FakeNotifier(), taskbar=FakeTaskbar())
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
     qtbot.addWidget(screen)
     screen.show()
     assert screen.failed_label.text() == "Не удалось проанализировать: IMG_0419.MP4"
@@ -372,7 +365,7 @@ def test_every_file_failed_shows_banner(qtbot, project, jobs, app_store):
     vm = make_vm(project, jobs, app_store, running=False)
     assert vm.all_failed
     assert vm.stages[0].state == "done" or vm.stages[0].state == "error"
-    screen = AnalysisScreen(vm, notifier=FakeNotifier(), taskbar=FakeTaskbar())
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
     qtbot.addWidget(screen)
     screen.show()
     assert not screen.error_banner.isHidden()
@@ -410,7 +403,7 @@ def test_eta_text_in_kyrgyz(qtbot, qapp, project, jobs, app_store):
 
 def test_old_crash_banner_does_not_return_after_resume_and_stop(qtbot, project, jobs, app_store):
     vm = make_vm(project, jobs, app_store, delay=50)
-    screen = AnalysisScreen(vm, notifier=FakeNotifier(), taskbar=FakeTaskbar())
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
     qtbot.addWidget(screen)
     screen.show()
     jobs.failed.emit(job_id(project), "crashed", "boom")

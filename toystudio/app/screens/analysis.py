@@ -1,10 +1,12 @@
-"""Screen 3: analysis progress - five stages, overall bar, time left, stop/resume."""
+"""Screen 3: analysis progress - five stages, overall bar, time left, stop/resume.
+
+The screen only displays its view-model. The Shell keeps the view-models of running
+analyses alive and drives the project card, the taskbar and the finish notification.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from PySide6.QtCore import QCoreApplication, QEvent, Signal
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -17,7 +19,6 @@ from PySide6.QtWidgets import (
 )
 
 from toystudio.app.platform.notify import Notifier
-from toystudio.app.platform.taskbar import TaskbarProgress
 from toystudio.app.theme.apply import set_variant, token
 from toystudio.app.viewmodels.analysis_vm import AnalysisVM
 from toystudio.app.widgets.analysis_stage import AnalysisStage
@@ -27,19 +28,15 @@ from toystudio.app.widgets.icons import icon
 
 
 class AnalysisScreen(QWidget):
-    open_requested = Signal(Path)
-
     def __init__(
         self,
         vm: AnalysisVM,
         notifier: Notifier | None = None,
-        taskbar: TaskbarProgress | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.vm = vm
         self._notifier = notifier or Notifier(QApplication.windowIcon())
-        self._taskbar = taskbar or TaskbarProgress(self)
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 24, 32, 24)
         root.setSpacing(16)
@@ -103,7 +100,7 @@ class AnalysisScreen(QWidget):
         bottom = QHBoxLayout()
         bottom.setSpacing(12)
         self.notify_check = QCheckBox()
-        self.notify_check.setChecked(True)
+        self.notify_check.setChecked(vm.notify_when_done)
         self.minimize_button = QPushButton()
         self.stop_button = QPushButton()
         set_variant(self.stop_button, "variant", "ghost")
@@ -120,6 +117,7 @@ class AnalysisScreen(QWidget):
         self.retry_button.clicked.connect(vm.resume)
         self.error_banner.action.connect(lambda _key: vm.resume())
         self.minimize_button.clicked.connect(lambda: self._notifier.minimize_to_tray(self.window()))
+        self.notify_check.toggled.connect(lambda on: setattr(vm, "notify_when_done", on))
         vm.changed.connect(self._render)
         vm.finished.connect(self._on_finished)
         vm.failed.connect(self._on_failed)
@@ -137,7 +135,6 @@ class AnalysisScreen(QWidget):
         self.overall_bar.setValue(round(vm.overall_percent))
         self.eta_label.setText(vm.eta_text or "")
         self.eta_label.setVisible(vm.running and bool(vm.eta_text))
-        self._taskbar.set_progress(vm.overall_percent if vm.running else None)
         running, resume = vm.running, vm.can_resume
         self.notify_check.setVisible(running)
         self.minimize_button.setVisible(running)
@@ -184,25 +181,10 @@ class AnalysisScreen(QWidget):
     def _on_finished(self, _cuts: int) -> None:
         self._failure = None
         self._render()
-        if not self.notify_check.isChecked() or self.vm.all_failed:
-            return
-        body = QCoreApplication.translate("AnalysisScreen", "Анализ «%1» готов").replace(
-            "%1", self.vm.project_name
-        )
-        self._notifier.notify(
-            QCoreApplication.translate("AnalysisScreen", "Той Студия"), body, self._open_project
-        )
 
     def _on_failed(self, code: str, detail: str) -> None:
         self._failure = (code, detail)
         self._render()
-
-    def _open_project(self) -> None:
-        win = self.window()
-        win.showNormal()
-        win.raise_()
-        win.activateWindow()
-        self.open_requested.emit(self.vm.root)
 
     # ---- i18n
     def retranslate(self) -> None:

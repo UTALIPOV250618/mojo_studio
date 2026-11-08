@@ -164,3 +164,16 @@ def test_duplicate_job_id_rejected(qtbot, mgr):
     mgr.start("q", [sys.executable, FAKE, "ok"])
     with pytest.raises(ValueError):
         mgr.start("q", [sys.executable, FAKE, "ok"])  # queued
+
+
+def test_pending_and_is_active_cover_queued_jobs(qtbot, mgr):
+    mgr.start("a", [sys.executable, FAKE, "hang"])
+    mgr.start("b", [sys.executable, FAKE, "ok"])
+    assert mgr.running() == ["a"]
+    assert mgr.pending() == ["b"]
+    assert mgr.is_active("a") and mgr.is_active("b") and not mgr.is_active("c")
+    with qtbot.waitSignal(mgr.failed, timeout=T):
+        mgr.cancel("b")
+    assert mgr.pending() == [] and not mgr.is_active("b")
+    mgr.cancel("a")
+    qtbot.waitUntil(lambda: not mgr.is_active("a"), timeout=T)

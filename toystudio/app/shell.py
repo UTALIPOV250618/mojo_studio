@@ -66,6 +66,9 @@ class Shell(QMainWindow):
         self.root_path: Path | None = None  # project open on screens 2-3
         self.new_project_screen: NewProjectScreen | None = None
         self.analysis_screen: AnalysisScreen | None = None
+        # ruling R20: one VM per project with a queued or running analysis; it outlives
+        # its screen and drives the card, the taskbar, the final status and the notification
+        self.analyses: dict[Path, AnalysisVM] = {}
         self._closing = False
 
         root = QWidget()
@@ -102,11 +105,12 @@ class Shell(QMainWindow):
         return self.projects_screen._title.text()
 
     def is_busy(self, root: Path) -> bool:
-        running = self.jobs.running()
-        return any(f"{kind}:{root}" in running for kind in _KINDS)
+        """An import or analysis of the project runs or waits in the queue."""
+        return any(self.jobs.is_active(f"{kind}:{root}") for kind in _KINDS)
 
     def analysis_running(self) -> bool:
-        return any(j.startswith("analyze:") for j in self.jobs.running())
+        jobs = [*self.jobs.running(), *self.jobs.pending()]
+        return any(j.startswith("analyze:") for j in jobs)
 
     # ---- navigation
     def show_projects(self) -> None:
@@ -142,14 +146,11 @@ class Shell(QMainWindow):
     def show_analysis(self, root: Path, *, assume_running: bool = False) -> None:
         root = root.resolve()
         self._drop_new_project()
+        vm = self._analysis_vm(root, assume_running)
         screen = self.analysis_screen
-        if screen is None or screen.vm.root != root or not screen.vm.running:
+        if screen is None or screen.vm is not vm:
             self._drop_analysis()
-            vm = AnalysisVM(root, self.jobs, self.app_store, assume_running=assume_running)
-            screen = AnalysisScreen(vm, self.notifier, self.taskbar)
-            vm.setParent(screen)
-            vm.changed.connect(lambda v=vm: self._on_analysis_changed(v))
-            screen.open_requested.connect(self.show_analysis)
+            screen = AnalysisScreen(vm, self.notifier)
             self.analysis_screen = screen
             self.stack.addWidget(screen)
         self.stack.setCurrentWidget(screen)
@@ -186,12 +187,12 @@ class Shell(QMainWindow):
 
     def _files_reachable(self, root: Path | None) -> bool:
         # editing the files of a project that is being analysed would race the worker
-        return root is None or f"analyze:{root}" not in self.jobs.running()
+        return root is None or not self.jobs.is_active(f"analyze:{root}")
 
     def _analysis_reachable(self, root: Path | None) -> bool:
         if root is None:
             return False
-        if f"analyze:{root}" in self.jobs.running():
+        if self.jobs.is_active(f"analyze:{root}"):
             return True
         return ProjectStore.peek(root).step != "files"  # read-only: a worker may run
 
@@ -215,17 +216,64 @@ class Shell(QMainWindow):
             return
         self.stack.removeWidget(screen)
         screen.deleteLater()
+        self._release(screen.vm)
 
-    # ---- progress routing: screen 1 card and the taskbar follow the running analysis
+    # ---- running analyses (R20): the registry, not the screen, follows every job
+    def _analysis_vm(self, root: Path, assume_running: bool = False) -> AnalysisVM:
+        vm = self.analyses.get(root)
+        if vm is not None:
+            return vm
+        vm = AnalysisVM(root, self.jobs, self.app_store, assume_running=assume_running)
+        vm.setParent(self)
+        vm.changed.connect(lambda v=vm: self._on_analysis_changed(v))
+        vm.finished.connect(lambda _cuts, v=vm: self._on_analysis_finished(v))
+        if vm.running:
+            self.analyses[root] = vm
+        return vm
+
+    def _release(self, vm: AnalysisVM) -> None:
+        """Delete a VM that neither follows a job nor is on screen."""
+        shown = self.analysis_screen is not None and self.analysis_screen.vm is vm
+        if not shown and self.analyses.get(vm.root) is not vm:
+            vm.deleteLater()
+
     def _on_analysis_changed(self, vm: AnalysisVM) -> None:
         if self._closing:
             return
         if vm.running:
+            self.analyses.setdefault(vm.root, vm)  # resumed from screen 3
             self.projects_vm.set_progress(vm.root, round(vm.overall_percent), vm.remaining_s)
-        else:
+        else:  # the VM has written the final status to app.db
+            if self.analyses.get(vm.root) is vm:
+                del self.analyses[vm.root]
+                self._release(vm)
             self.projects_vm.reload()
+        self._update_taskbar()
         if self.current_screen() is self.analysis_screen:
             self._update_steps(STEP_ANALYSIS)
+
+    def _update_taskbar(self) -> None:
+        running = self.jobs.running()
+        active = [vm for vm in self.analyses.values() if vm.running and vm.job_id in running]
+        self.taskbar.set_progress(active[0].overall_percent if active else None)
+
+    def _on_analysis_finished(self, vm: AnalysisVM) -> None:
+        if self._closing or not vm.notify_when_done or vm.all_failed:
+            return
+        body = QCoreApplication.translate("AnalysisScreen", "Анализ «%1» готов").replace(
+            "%1", vm.project_name
+        )
+        self.notifier.notify(
+            QCoreApplication.translate("AnalysisScreen", "Той Студия"),
+            body,
+            lambda r=vm.root: self._open_from_notification(r),
+        )
+
+    def _open_from_notification(self, root: Path) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        self.show_analysis(root)
 
     def _on_job_end(self) -> None:
         if self.current_screen() is self.projects_screen and not self._closing:
@@ -256,6 +304,8 @@ class Shell(QMainWindow):
 
     def stop_jobs(self, wait_s: float = STOP_WAIT_S) -> None:
         """Ask workers to stop via their stop files, wait for them, then kill what is left."""
+        for job_id in self.jobs.pending():  # never started: nothing to save
+            self.jobs.cancel(job_id)
         for job_id in self.jobs.running():
             parsed = _job_root(job_id)
             if parsed is None:
