@@ -41,18 +41,18 @@ def format_duration_words(us: int, lang: str) -> str:
     return " ".join(parts)
 
 
-# ETA hour unit follows the brief ("дагы ~2 с"), which differs from _UNITS["ky"].
-_ETA_TEXT: dict[str, tuple[str, str, str, str]] = {
-    # (under a minute, prefix, minute unit, hour unit)
-    "ru": ("меньше минуты", "ещё ~", "мин", "ч"),
-    "ky": ("бир мүнөткө жетпей", "дагы ~", "мүн", "с"),
+# (under a minute, prefix) per language; units come from _UNITS.
+_ETA_TEXT: dict[str, tuple[str, str]] = {
+    "ru": ("меньше минуты", "ещё ~"),
+    "ky": ("бир мүнөткө жетпей", "дагы ~"),
 }
 
 
 def format_eta(seconds: float, lang: Literal["ru", "ky"]) -> str:
     if lang not in _ETA_TEXT:
         raise ValueError(f"unsupported language: {lang}")
-    under_minute, prefix, m_unit, h_unit = _ETA_TEXT[lang]
+    under_minute, prefix = _ETA_TEXT[lang]
+    h_unit, m_unit = _UNITS[lang]
     if seconds < 60:
         return under_minute
     minutes = math.ceil(seconds / 60)

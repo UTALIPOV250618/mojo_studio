@@ -49,5 +49,14 @@ def test_format_eta() -> None:
     assert format_eta(2 * 3600, "ru") == "ещё ~2 ч"
     assert format_eta(22 * 60 + 1, "ky") == "дагы ~23 мүн"
     assert format_eta(30, "ky") == "бир мүнөткө жетпей"
-    assert format_eta(2 * 3600, "ky") == "дагы ~2 с"
-    assert format_eta(70 * 60, "ky") == "дагы ~1 с 10 мүн"
+    assert format_eta(2 * 3600, "ky") == "дагы ~2 саат"
+    assert format_eta(70 * 60, "ky") == "дагы ~1 саат 10 мүн"
+
+
+def test_format_eta_boundaries() -> None:
+    assert format_eta(60, "ru") == "ещё ~1 мин"
+    assert format_eta(60, "ky") == "дагы ~1 мүн"
+    assert format_eta(3599, "ru") == "ещё ~1 ч"
+    assert format_eta(3600, "ru") == "ещё ~1 ч"
+    assert format_eta(3599, "ky") == "дагы ~1 саат"
+    assert format_eta(3600, "ky") == "дагы ~1 саат"
