@@ -135,3 +135,88 @@ QLineEdit, QPlainTextEdit {
 QLineEdit:focus, QPlainTextEdit:focus {
     border: 2px solid #1f6f9e;
 }
+
+/* Typography roles and tones for labels. */
+QLabel[role="display"] { font-size: 28px; font-weight: 600; }
+QLabel[role="title"] { font-size: 20px; font-weight: 600; }
+QLabel[role="heading"] { font-size: 15px; font-weight: 600; }
+QLabel[role="body"] { font-size: 14px; font-weight: 400; }
+QLabel[role="label"] { font-size: 13px; font-weight: 500; }
+QLabel[role="caption"] { font-size: 12px; font-weight: 400; }
+QLabel[role="timecode"] {
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 13px;
+    font-weight: 500;
+}
+QLabel[tone="muted"] { color: #555c66; }
+QLabel[tone="faint"] { color: #666d77; }
+QLabel[tone="teal"] { color: #1f6f9e; }
+QLabel[tone="done"] { color: #22794a; }
+QLabel[tone="error"] { color: #b23a2a; }
+
+/* StatusBadge */
+QFrame#StatusBadge {
+    border-radius: 999px;
+}
+QFrame#StatusBadge[badge="analysis"] { background: #e1f0f8; }
+QFrame#StatusBadge[badge="ready"] { background: #fbf1d9; }
+QFrame#StatusBadge[badge="done"] { background: #e0f2e7; }
+QFrame#StatusBadge[badge="error"] { background: #fbe6e2; }
+QFrame#StatusBadge[badge="offline"] { background: #eef0f2; }
+QFrame#StatusBadge[badge="analysis"] QLabel { color: #1f6f9e; }
+QFrame#StatusBadge[badge="ready"] QLabel { color: #8a5d00; }
+QFrame#StatusBadge[badge="done"] QLabel { color: #22794a; }
+QFrame#StatusBadge[badge="error"] QLabel { color: #b23a2a; }
+QFrame#StatusBadge[badge="offline"] QLabel { color: #555c66; }
+
+/* Banner */
+QFrame#Banner {
+    border-radius: 6px;
+    border: 1px solid #e2e4e8;
+}
+QFrame#Banner[kind="error"] { background: #fbe6e2; border-color: #b23a2a; }
+QFrame#Banner[kind="offline"] { background: #eef0f2; border-color: #e2e4e8; }
+QFrame#Banner[kind="info"] { background: #e1f0f8; border-color: #1f6f9e; }
+QFrame#Banner QLabel { background: transparent; }
+
+/* DropZone */
+QFrame#DropZone {
+    border: 2px dashed #8b919b;
+    border-radius: 10px;
+}
+QFrame#DropZone[dragover="true"] {
+    border: 2px solid #a52a3a;
+    background: #f8e4e7;
+}
+QFrame#DropRow { background: transparent; border-bottom: 1px solid #e2e4e8; }
+
+/* ProjectCard */
+QFrame#ProjectCard {
+    background: #ffffff;
+    border: 1px solid #e2e4e8;
+    border-radius: 10px;
+}
+QFrame#ProjectCard:hover { border: 1px solid #8b919b; }
+QFrame#ProjectCard:focus { border: 2px solid #1f6f9e; }
+QLabel#ProjectPreview {
+    background: #000000;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+QProgressBar {
+    background: #e2e5e9;
+    border: none;
+    max-height: 4px;
+    min-height: 4px;
+}
+QProgressBar::chunk { background: #1f6f9e; }
+
+/* AnalysisStage */
+QFrame#AnalysisStage { border-radius: 6px; background: transparent; }
+QFrame#AnalysisStage[state="running"] { background: #e1f0f8; }
+QLabel#ProjectDuration {
+    color: #ffffff;
+    background: rgba(20,22,26,0.45);
+    border-radius: 4px;
+    padding: 2px 4px;
+}

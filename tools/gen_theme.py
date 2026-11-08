@@ -132,6 +132,10 @@ def main(argv: list[str]) -> int:
         values["font-sans"] = tokens.type_styles["body"].family
         values["label-size"] = f"{label.font_size}px"
         values["label-weight"] = str(label.font_weight)
+        values["font-mono"] = tokens.type_styles["timecode"].family
+        for name, style in tokens.type_styles.items():
+            values[f"{name}-px"] = f"{style.font_size}px"
+            values[f"{name}-wt"] = str(style.font_weight)
         qss = QSS_HEADER + render_qss(template, values, tokens.sizes)
         _write(out_dir / f"theme_{theme}.qss", qss)
     _write(out_dir / "tokens.py", render_tokens_py(tokens))

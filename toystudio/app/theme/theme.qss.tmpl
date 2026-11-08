@@ -135,3 +135,88 @@ QLineEdit, QPlainTextEdit {
 QLineEdit:focus, QPlainTextEdit:focus {
     border: 2px solid {{focus}};
 }
+
+/* Typography roles and tones for labels. */
+QLabel[role="display"] { font-size: {{display-px}}; font-weight: {{display-wt}}; }
+QLabel[role="title"] { font-size: {{title-px}}; font-weight: {{title-wt}}; }
+QLabel[role="heading"] { font-size: {{heading-px}}; font-weight: {{heading-wt}}; }
+QLabel[role="body"] { font-size: {{body-px}}; font-weight: {{body-wt}}; }
+QLabel[role="label"] { font-size: {{label-px}}; font-weight: {{label-wt}}; }
+QLabel[role="caption"] { font-size: {{caption-px}}; font-weight: {{caption-wt}}; }
+QLabel[role="timecode"] {
+    font-family: {{font-mono}};
+    font-size: {{timecode-px}};
+    font-weight: {{timecode-wt}};
+}
+QLabel[tone="muted"] { color: {{ink-muted}}; }
+QLabel[tone="faint"] { color: {{ink-faint}}; }
+QLabel[tone="teal"] { color: {{teal-400}}; }
+QLabel[tone="done"] { color: {{status-done}}; }
+QLabel[tone="error"] { color: {{status-error}}; }
+
+/* StatusBadge */
+QFrame#StatusBadge {
+    border-radius: {{radius-pill}};
+}
+QFrame#StatusBadge[badge="analysis"] { background: {{teal-tint}}; }
+QFrame#StatusBadge[badge="ready"] { background: {{status-ready-tint}}; }
+QFrame#StatusBadge[badge="done"] { background: {{status-done-tint}}; }
+QFrame#StatusBadge[badge="error"] { background: {{status-error-tint}}; }
+QFrame#StatusBadge[badge="offline"] { background: {{bg-300}}; }
+QFrame#StatusBadge[badge="analysis"] QLabel { color: {{teal-400}}; }
+QFrame#StatusBadge[badge="ready"] QLabel { color: {{status-ready}}; }
+QFrame#StatusBadge[badge="done"] QLabel { color: {{status-done}}; }
+QFrame#StatusBadge[badge="error"] QLabel { color: {{status-error}}; }
+QFrame#StatusBadge[badge="offline"] QLabel { color: {{status-offline}}; }
+
+/* Banner */
+QFrame#Banner {
+    border-radius: {{radius-md}};
+    border: 1px solid {{line-100}};
+}
+QFrame#Banner[kind="error"] { background: {{status-error-tint}}; border-color: {{status-error}}; }
+QFrame#Banner[kind="offline"] { background: {{bg-300}}; border-color: {{line-100}}; }
+QFrame#Banner[kind="info"] { background: {{teal-tint}}; border-color: {{teal-400}}; }
+QFrame#Banner QLabel { background: transparent; }
+
+/* DropZone */
+QFrame#DropZone {
+    border: 2px dashed {{line-200}};
+    border-radius: {{radius-lg}};
+}
+QFrame#DropZone[dragover="true"] {
+    border: 2px solid {{garnet-500}};
+    background: {{garnet-tint}};
+}
+QFrame#DropRow { background: transparent; border-bottom: 1px solid {{line-100}}; }
+
+/* ProjectCard */
+QFrame#ProjectCard {
+    background: {{bg-200}};
+    border: 1px solid {{line-100}};
+    border-radius: {{radius-lg}};
+}
+QFrame#ProjectCard:hover { border: 1px solid {{line-200}}; }
+QFrame#ProjectCard:focus { border: 2px solid {{focus}}; }
+QLabel#ProjectPreview {
+    background: {{player-bg}};
+    border-top-left-radius: {{radius-lg}};
+    border-top-right-radius: {{radius-lg}};
+}
+QProgressBar {
+    background: {{bg-400}};
+    border: none;
+    max-height: {{space-1}};
+    min-height: {{space-1}};
+}
+QProgressBar::chunk { background: {{teal-400}}; }
+
+/* AnalysisStage */
+QFrame#AnalysisStage { border-radius: {{radius-md}}; background: transparent; }
+QFrame#AnalysisStage[state="running"] { background: {{teal-tint}}; }
+QLabel#ProjectDuration {
+    color: {{ink-on-accent}};
+    background: {{scrim}};
+    border-radius: {{radius-sm}};
+    padding: 2px {{space-1}};
+}
