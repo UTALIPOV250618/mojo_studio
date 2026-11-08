@@ -1,0 +1,761 @@
+{
+  "spike": "s2",
+  "mode": "render",
+  "args": {
+    "mode": "render",
+    "segments": 200,
+    "seed": 2,
+    "work": "/Users/mr.curious/mojo-studio/spikes/data/s2/Той Студия",
+    "out": "darwin-render-fix1-block",
+    "seeks": 100,
+    "steps": 50,
+    "rebuilds": 20,
+    "play_s": null,
+    "no_music": false,
+    "fonts_dir": null,
+    "hwdec": "no",
+    "gop_s": 1.0,
+    "play_after_s": 60.0,
+    "skip_sync": true,
+    "only": "seek_paused,frame_step,rebuild_paused",
+    "block": true,
+    "mpv_opt": []
+  },
+  "edl": {
+    "segments": 200,
+    "frames": 12095,
+    "total_s": 345.306268,
+    "lead_us": 100,
+    "sources": {
+      "s25": {
+        "fps": "25",
+        "frames": 1500
+      },
+      "s2997": {
+        "fps": "30000/1001",
+        "frames": 1798
+      },
+      "s50": {
+        "fps": "50",
+        "frames": 3000
+      }
+    },
+    "url_chars": 19594,
+    "seg_len_s": {
+      "n": 200,
+      "min": 0.5,
+      "p50": 1.69,
+      "p95": 2.9,
+      "max": 3.0,
+      "mean": 1.73
+    }
+  },
+  "thresholds": {
+    "seam_mad_max": 2.0,
+    "painted_mad_max": 2.5,
+    "seek_p95_ms": 150.0,
+    "rebuild_max_ms": 300.0,
+    "step_max_ms": 100.0,
+    "sync_max_frames": 1,
+    "seam_audio_factor": 2.0
+  },
+  "libmpv": {
+    "version": "mpv v0.42.0",
+    "ffmpeg_version": "9.0.2",
+    "configuration": "-Dbuildtype=release -Dsysconfdir=/opt/homebrew/etc -Dbuild-date=false -Dhtml-build=enabled -Djavascript=enabled -Dlibmpv=true -Dlua=luajit -Dlibarchive=enabled -Duchardet=enabled -Dvulkan=enabled -Dprefix=/opt/homebrew/Cellar/mpv/0.42.0 -Dlibdir=lib -Dwrap_mode=nofallback",
+    "gpl_false_in_configuration": false,
+    "library": "/opt/homebrew/lib/libmpv.dylib",
+    "cli_features": [
+      "avfoundation",
+      "bsd-fstatfs",
+      "cocoa",
+      "coreaudio",
+      "cplugins",
+      "darwin",
+      "ffmpeg",
+      "gl",
+      "gl-cocoa",
+      "glob",
+      "glob-posix",
+      "gpl",
+      "iconv",
+      "javascript",
+      "jpeg",
+      "lcms2",
+      "libarchive",
+      "libass",
+      "libavdevice",
+      "libbluray",
+      "libcurl",
+      "libdl",
+      "libplacebo",
+      "luajit",
+      "mac-thread-name",
+      "macos-10-15-4-features",
+      "macos-11-3-features",
+      "macos-11-features",
+      "macos-12-features",
+      "macos-cocoa-cb",
+      "macos-media-player",
+      "macos-touchbar",
+      "pipe2",
+      "posix",
+      "posix-shm",
+      "rubberband",
+      "rubberband-3",
+      "swift",
+      "uchardet",
+      "vapoursynth",
+      "vector",
+      "videotoolbox-gl",
+      "videotoolbox-pl",
+      "vk-khr-display",
+      "vulkan",
+      "zimg",
+      "zimg-st428",
+      "zlib"
+    ]
+  },
+  "first_load_ms": 239.56666700541973,
+  "video_params": {
+    "pixelformat": "yuv420p",
+    "average-bpp": 12,
+    "w": 960,
+    "h": 540,
+    "dw": 960,
+    "dh": 540,
+    "crop-x": 0,
+    "crop-y": 0,
+    "crop-w": 960,
+    "crop-h": 540,
+    "aspect": 1.7777777777777777,
+    "aspect-name": "16:9",
+    "par": 1.0,
+    "sar": 1.7777777777777777,
+    "sar-name": "16:9",
+    "colormatrix": "bt.709",
+    "colorlevels": "limited",
+    "primaries": "bt.709",
+    "gamma": "bt.1886",
+    "sig-peak": 0.0,
+    "light": "display",
+    "chroma-location": "mpeg2/4/h264",
+    "stereo-in": "mono",
+    "rotate": 0,
+    "alpha": "none"
+  },
+  "hwdec_current": "no",
+  "duration_s": 345.3062679999999,
+  "app_nap_disabled": true,
+  "screen": {
+    "refresh_hz": 60.0,
+    "dpr": 2.0
+  },
+  "display-fps": null,
+  "estimated-display-fps": null,
+  "video-sync": "audio",
+  "seek_paused": {
+    "n": 100,
+    "playing": false,
+    "to_restart_ms": {
+      "n": 100,
+      "min": 10.89,
+      "p50": 15.39,
+      "p95": 20.02,
+      "max": 21.29,
+      "mean": 15.59
+    },
+    "painted": {
+      "n": 100,
+      "not_seen_within_1s": 0,
+      "to_painted_ms": {
+        "n": 100,
+        "min": 5.98,
+        "p50": 9.76,
+        "p95": 13.8,
+        "max": 16.31,
+        "mean": 9.96
+      },
+      "to_swap_ms": {
+        "n": 100,
+        "min": 9.63,
+        "p50": 13.8,
+        "p95": 17.95,
+        "max": 19.94,
+        "mean": 13.95
+      },
+      "painted_mad": {
+        "n": 100,
+        "min": 0.535,
+        "p50": 1.532,
+        "p95": 1.587,
+        "max": 1.631,
+        "mean": 1.472
+      },
+      "stale_paints_before_hit": 2
+    },
+    "to_paint_after_restart_ms": {
+      "n": 100,
+      "min": 103.34,
+      "p50": 168.43,
+      "p95": 181.49,
+      "max": 183.25,
+      "mean": 153.3
+    },
+    "wrong_frame": 0,
+    "wrong_examples": []
+  },
+  "frame_step": {
+    "start_frame_index": 5880,
+    "forward": {
+      "steps": 50,
+      "errors": 0,
+      "error_examples": [],
+      "ms": {
+        "n": 50,
+        "min": 0.58,
+        "p50": 16.38,
+        "p95": 70.31,
+        "max": 77.7,
+        "mean": 26.86
+      },
+      "painted": {
+        "n": 50,
+        "not_seen_within_1s": 0,
+        "to_painted_ms": {
+          "n": 50,
+          "min": 30.89,
+          "p50": 66.42,
+          "p95": 121.14,
+          "max": 127.13,
+          "mean": 75.8
+        },
+        "to_swap_ms": {
+          "n": 50,
+          "min": 33.69,
+          "p50": 70.17,
+          "p95": 125.41,
+          "max": 131.77,
+          "mean": 79.33
+        },
+        "painted_mad": {
+          "n": 50,
+          "min": 1.498,
+          "p50": 1.557,
+          "p95": 1.589,
+          "max": 1.596,
+          "mean": 1.555
+        },
+        "stale_paints_before_hit": 0
+      }
+    },
+    "back": {
+      "steps": 50,
+      "errors": 0,
+      "error_examples": [],
+      "ms": {
+        "n": 50,
+        "min": 36.12,
+        "p50": 57.79,
+        "p95": 71.31,
+        "max": 72.17,
+        "mean": 56.55
+      },
+      "painted": {
+        "n": 50,
+        "not_seen_within_1s": 0,
+        "to_painted_ms": {
+          "n": 50,
+          "min": 5.97,
+          "p50": 11.56,
+          "p95": 15.58,
+          "max": 16.83,
+          "mean": 11.01
+        },
+        "to_swap_ms": {
+          "n": 50,
+          "min": 9.46,
+          "p50": 15.12,
+          "p95": 19.18,
+          "max": 20.37,
+          "mean": 14.58
+        },
+        "painted_mad": {
+          "n": 50,
+          "min": 1.498,
+          "p50": 1.554,
+          "p95": 1.589,
+          "max": 1.596,
+          "mean": 1.555
+        },
+        "stale_paints_before_hit": 8
+      }
+    }
+  },
+  "rebuild_paused": {
+    "n": 20,
+    "playing": false,
+    "edl_segments": 200,
+    "loadfile_start": {
+      "to_restart_ms": {
+        "n": 10,
+        "min": 43.81,
+        "p50": 46.26,
+        "p95": 57.8,
+        "max": 65.08,
+        "mean": 48.11
+      },
+      "to_paint_after_restart_ms": {
+        "n": 10,
+        "min": 184.11,
+        "p50": 213.73,
+        "p95": 223.0,
+        "max": 228.37,
+        "mean": 207.7
+      },
+      "painted_shift": {
+        "n": 5,
+        "not_seen_within_1s": 0,
+        "to_painted_ms": {
+          "n": 5,
+          "min": 39.5,
+          "p50": 41.51,
+          "p95": 57.48,
+          "max": 60.72,
+          "mean": 45.41
+        },
+        "to_swap_ms": {
+          "n": 5,
+          "min": 43.15,
+          "p50": 44.99,
+          "p95": 61.12,
+          "max": 64.38,
+          "mean": 49.02
+        },
+        "painted_mad": {
+          "n": 5,
+          "min": 1.482,
+          "p50": 1.509,
+          "p95": 1.611,
+          "max": 1.626,
+          "mean": 1.532
+        },
+        "stale_paints_before_hit": 5
+      },
+      "extend_to_restart_ms": {
+        "n": 5,
+        "min": 44.18,
+        "p50": 46.52,
+        "p95": 48.02,
+        "max": 48.05,
+        "mean": 46.45
+      },
+      "frame_ok": 10,
+      "frame_wrong": 0
+    },
+    "loadfile_then_seek": {
+      "to_restart_ms": {
+        "n": 10,
+        "min": 53.06,
+        "p50": 54.93,
+        "p95": 58.44,
+        "max": 59.57,
+        "mean": 55.22
+      },
+      "to_paint_after_restart_ms": {
+        "n": 10,
+        "min": 210.96,
+        "p50": 221.62,
+        "p95": 224.88,
+        "max": 226.14,
+        "mean": 219.44
+      },
+      "painted_shift": {
+        "n": 5,
+        "not_seen_within_1s": 0,
+        "to_painted_ms": {
+          "n": 5,
+          "min": 48.94,
+          "p50": 50.14,
+          "p95": 53.6,
+          "max": 54.18,
+          "mean": 50.9
+        },
+        "to_swap_ms": {
+          "n": 5,
+          "min": 52.47,
+          "p50": 53.63,
+          "p95": 57.15,
+          "max": 57.79,
+          "mean": 54.38
+        },
+        "painted_mad": {
+          "n": 5,
+          "min": 1.459,
+          "p50": 1.518,
+          "p95": 1.533,
+          "max": 1.535,
+          "mean": 1.508
+        },
+        "stale_paints_before_hit": 10
+      },
+      "extend_to_restart_ms": {
+        "n": 5,
+        "min": 53.06,
+        "p50": 53.84,
+        "p95": 56.81,
+        "max": 57.05,
+        "mean": 54.62
+      },
+      "frame_ok": 10,
+      "frame_wrong": 0
+    },
+    "rows": [
+      {
+        "kind": "shift",
+        "variant": "loadfile_start",
+        "to_restart_ms": 65.0782500160858,
+        "to_paint_after_restart_ms": 228.36912499042228,
+        "painted": {
+          "paint_ms": 60.72137498995289,
+          "swap_ms": 64.37554099829867,
+          "mad": 1.6256385030864198,
+          "paints_before": 1
+        },
+        "pos_err_us": -37,
+        "new_mad": 1.3458513374485597,
+        "old_mad": 7.230772890946502,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 54.90716698113829,
+        "to_paint_after_restart_ms": 222.9527089803014,
+        "painted": {
+          "paint_ms": 49.93462498532608,
+          "swap_ms": 53.45599999418482,
+          "mad": 1.5041309799382716,
+          "paints_before": 2
+        },
+        "pos_err_us": -32,
+        "new_mad": 1.2234522890946502,
+        "old_mad": 18.162227366255145,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_start",
+        "to_restart_ms": 47.88774999906309,
+        "to_paint_after_restart_ms": 216.4466660178732,
+        "pos_err_us": 28,
+        "new_mad": 1.202408693415638,
+        "old_mad": 1.202408693415638,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 53.05741599295288,
+        "to_paint_after_restart_ms": 210.96379100345075,
+        "pos_err_us": -36,
+        "new_mad": 1.2999807098765432,
+        "old_mad": 1.2999807098765432,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_start",
+        "to_restart_ms": 48.90195801272057,
+        "to_paint_after_restart_ms": 215.8458750054706,
+        "painted": {
+          "paint_ms": 44.53250000369735,
+          "swap_ms": 48.111333017004654,
+          "mad": 1.508961066100823,
+          "paints_before": 1
+        },
+        "pos_err_us": 13,
+        "new_mad": 1.2216724537037038,
+        "old_mad": 6.364823816872428,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 56.0383329866454,
+        "to_paint_after_restart_ms": 223.20870799012482,
+        "painted": {
+          "paint_ms": 51.28191600670107,
+          "swap_ms": 54.58091601030901,
+          "mad": 1.5349199459876544,
+          "paints_before": 2
+        },
+        "pos_err_us": -32,
+        "new_mad": 1.2484143518518518,
+        "old_mad": 22.478517875514402,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_start",
+        "to_restart_ms": 45.61379199731164,
+        "to_paint_after_restart_ms": 203.1304169795476,
+        "pos_err_us": 15,
+        "new_mad": 1.2278716563786007,
+        "old_mad": 1.2278716563786007,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 53.296250000130385,
+        "to_paint_after_restart_ms": 213.7768750253599,
+        "pos_err_us": -2,
+        "new_mad": 1.2547807355967078,
+        "old_mad": 1.2547807355967078,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_start",
+        "to_restart_ms": 46.003916999325156,
+        "to_paint_after_restart_ms": 195.60912501765415,
+        "painted": {
+          "paint_ms": 41.50525000295602,
+          "swap_ms": 44.98887501540594,
+          "mad": 1.4824543467078188,
+          "paints_before": 1
+        },
+        "pos_err_us": 12,
+        "new_mad": 1.1903375771604938,
+        "old_mad": 4.583317901234568,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 54.94466598611325,
+        "to_paint_after_restart_ms": 223.33987499587238,
+        "painted": {
+          "paint_ms": 50.144749984610826,
+          "swap_ms": 53.63412498263642,
+          "mad": 1.4594934735082306,
+          "paints_before": 2
+        },
+        "pos_err_us": -9,
+        "new_mad": 1.1759477880658435,
+        "old_mad": 17.945344007201648,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_start",
+        "to_restart_ms": 46.51758400723338,
+        "to_paint_after_restart_ms": 214.63220901205204,
+        "pos_err_us": -32,
+        "new_mad": 1.2423025977366255,
+        "old_mad": 1.2423025977366255,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 55.863833986222744,
+        "to_paint_after_restart_ms": 215.83612498943694,
+        "pos_err_us": -1,
+        "new_mad": 1.2336747685185185,
+        "old_mad": 1.2336747685185185,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_start",
+        "to_restart_ms": 45.09112500818446,
+        "to_paint_after_restart_ms": 184.10949999815784,
+        "painted": {
+          "paint_ms": 40.80520800198428,
+          "swap_ms": 44.449124980019405,
+          "mad": 1.550591724537037,
+          "paints_before": 1
+        },
+        "pos_err_us": 15,
+        "new_mad": 1.2660030864197531,
+        "old_mad": 5.799988425925926,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 59.57183300051838,
+        "to_paint_after_restart_ms": 226.14220800460316,
+        "painted": {
+          "paint_ms": 54.176833014935255,
+          "swap_ms": 57.78620799537748,
+          "mad": 1.518144772376543,
+          "paints_before": 2
+        },
+        "pos_err_us": -37,
+        "new_mad": 1.2272280092592593,
+        "old_mad": 22.142558513374485,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_start",
+        "to_restart_ms": 48.05091698653996,
+        "to_paint_after_restart_ms": 216.3500419992488,
+        "pos_err_us": 27,
+        "new_mad": 1.188991769547325,
+        "old_mad": 1.188991769547325,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 53.83716701180674,
+        "to_paint_after_restart_ms": 221.37566699529998,
+        "pos_err_us": -37,
+        "new_mad": 1.2640374228395062,
+        "old_mad": 1.2640374228395062,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_start",
+        "to_restart_ms": 43.811333016492426,
+        "to_paint_after_restart_ms": 189.7313329973258,
+        "painted": {
+          "paint_ms": 39.504165994003415,
+          "swap_ms": 43.15266601042822,
+          "mad": 1.4904333847736626,
+          "paints_before": 1
+        },
+        "pos_err_us": -3,
+        "new_mad": 1.2021585648148148,
+        "old_mad": 14.30707433127572,
+        "frame_ok": true
+      },
+      {
+        "kind": "shift",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 53.652375005185604,
+        "to_paint_after_restart_ms": 221.86141699785367,
+        "painted": {
+          "paint_ms": 48.940999986371025,
+          "swap_ms": 52.46604199055582,
+          "mad": 1.5242023533950617,
+          "paints_before": 2
+        },
+        "pos_err_us": -16,
+        "new_mad": 1.2357921810699588,
+        "old_mad": 5.728265174897119,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_start",
+        "to_restart_ms": 44.18304201681167,
+        "to_paint_after_restart_ms": 212.81820902368054,
+        "pos_err_us": 15,
+        "new_mad": 1.2629591049382716,
+        "old_mad": 1.2629591049382716,
+        "frame_ok": true
+      },
+      {
+        "kind": "extend",
+        "variant": "loadfile_then_seek",
+        "to_restart_ms": 57.05183299141936,
+        "to_paint_after_restart_ms": 214.92154098814353,
+        "pos_err_us": 28,
+        "new_mad": 1.2351665380658436,
+        "old_mad": 1.2351665380658436,
+        "frame_ok": true
+      }
+    ]
+  },
+  "render_call_ms": {
+    "n": 514,
+    "min": 0.06,
+    "p50": 1.24,
+    "p95": 49.95,
+    "max": 59.18,
+    "mean": 5.97
+  },
+  "log_tail": [],
+  "verdicts": {
+    "seams_0_bad": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "control_lead100_first_frames": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "playback_0_dropped_or_delayed": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "playback_after_seeks_0_dropped_or_delayed": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "seek_painted_p95_le_150ms": {
+      "value": 17.95,
+      "threshold": 150.0,
+      "unit": "ms",
+      "pass": true
+    },
+    "seek_event_p95_le_150ms": {
+      "value": 20.02,
+      "threshold": 150.0,
+      "unit": "ms",
+      "pass": true
+    },
+    "rebuild_paused_le_300ms": {
+      "value": 64.38,
+      "threshold": 300.0,
+      "unit": "ms",
+      "pass": true,
+      "basis": "painted (shift edits); playback-restart (extend edits, same picture)"
+    },
+    "rebuild_playing_le_300ms": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "frame_step_le_100ms_no_errors": {
+      "value": 131.77,
+      "threshold": 100.0,
+      "unit": "ms",
+      "pass": false,
+      "basis": "painted"
+    },
+    "sync_within_1_frame": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "seam_audio_no_glitch": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "titles_rendered": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    }
+  },
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "568bc74-dirty"
+}

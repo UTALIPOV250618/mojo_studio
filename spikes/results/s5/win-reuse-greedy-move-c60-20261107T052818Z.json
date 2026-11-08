@@ -1,0 +1,86 @@
+{
+  "run": "reuse-greedy-move-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5-move.json",
+    "mode": "chunked",
+    "naive": false,
+    "pad": true,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "greedy",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 305598426,
+    "export_duration_us": 305560000,
+    "expected_frames": 7639,
+    "expected_frames_nominal": 7639.96065,
+    "timings": {
+      "chunks_s": 24.97471540000015,
+      "per_chunk_s": [
+        24.973918700000013
+      ],
+      "audio_s": 13.135166300000037,
+      "video_and_audio_s": 38.109887499999786,
+      "mux_s": 8.207875000000058,
+      "total_s": 46.398885000000064
+    },
+    "chunks_total": 5,
+    "chunks_rendered": 1,
+    "chunks_reused": 4,
+    "chunk_frames": [
+      1562,
+      1537,
+      1560,
+      1505,
+      1475
+    ],
+    "chunk_files": [
+      "d94a2026a9d259b64a0cbbf2.mp4",
+      "16cdaa544683034e7bd4976b.mp4",
+      "33bc714c04137cb8227763d5.mp4",
+      "8a87126f9ae6912240888315.mp4",
+      "1ccd738937c69a4be4f44d37.mp4"
+    ],
+    "audio_cmdline_chars": 10162
+  },
+  "sync": null,
+  "machine": {
+    "platform": "Windows-2025Server-10.0.26100-SP0",
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "ram_bytes": 17174360064,
+    "gpu": "Microsoft Hyper-V Video"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "1230979-dirty"
+}

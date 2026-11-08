@@ -1,0 +1,54 @@
+{
+  "tonemap_path": "fallback",
+  "footage_s": 13200,
+  "hdr_ramp": null,
+  "summary": [
+    {
+      "source": "h264_1080p25",
+      "hwaccel": "none",
+      "threads": 2,
+      "tonemap": "none",
+      "x_rt": 6.6,
+      "ge_12x": false,
+      "ge_15x_target": false,
+      "python_cpu_lt_50pct": true,
+      "peak_lt_1_5gb": true,
+      "analysis_min_3h40": 33.4,
+      "x_rt_by_mode": {
+        "full": 6.6
+      },
+      "verify": {
+        "proxy_codec": "h264",
+        "proxy_size": [
+          960,
+          540
+        ],
+        "proxy_pix_fmt": "yuv420p",
+        "proxy_trc": null,
+        "proxy_primaries": null,
+        "proxy_fps": "25/1",
+        "proxy_rotation": false,
+        "proxy_mb": 15.9,
+        "proxy_short_side_540": true,
+        "proxy_tags_sdr": null,
+        "proxy_aspect_ok": true,
+        "marker_found": "top-left",
+        "marker_expected": "top-left",
+        "marker_lead": 0.25,
+        "orientation_ok": true,
+        "proxy_mean_luma": 141.9,
+        "wav_rate": 16000,
+        "wav_channels": 1,
+        "wav_ok": true
+      }
+    }
+  ],
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "8307686-dirty"
+}

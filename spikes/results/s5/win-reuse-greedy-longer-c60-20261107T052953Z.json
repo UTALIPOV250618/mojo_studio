@@ -1,0 +1,88 @@
+{
+  "run": "reuse-greedy-longer-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5-longer.json",
+    "mode": "chunked",
+    "naive": false,
+    "pad": true,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "greedy",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 307598426,
+    "export_duration_us": 307560000,
+    "expected_frames": 7689,
+    "expected_frames_nominal": 7689.96065,
+    "timings": {
+      "chunks_s": 73.37809179999977,
+      "per_chunk_s": [
+        24.284000099999957,
+        25.034179400000085,
+        24.058407200000147
+      ],
+      "audio_s": 13.413291900000331,
+      "video_and_audio_s": 86.79139069999974,
+      "mux_s": 8.313740900000084,
+      "total_s": 95.19908289999967
+    },
+    "chunks_total": 5,
+    "chunks_rendered": 3,
+    "chunks_reused": 2,
+    "chunk_frames": [
+      1562,
+      1537,
+      1508,
+      1551,
+      1531
+    ],
+    "chunk_files": [
+      "d94a2026a9d259b64a0cbbf2.mp4",
+      "16cdaa544683034e7bd4976b.mp4",
+      "5e9deebaf100ef8a1c555a95.mp4",
+      "87daeb08301ad502e9ee921a.mp4",
+      "78c7243da08745b2651d2ce5.mp4"
+    ],
+    "audio_cmdline_chars": 10166
+  },
+  "sync": null,
+  "machine": {
+    "platform": "Windows-2025Server-10.0.26100-SP0",
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "ram_bytes": 17174360064,
+    "gpu": "Microsoft Hyper-V Video"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "1230979-dirty"
+}

@@ -1,0 +1,89 @@
+{
+  "run": "reuse-local-base-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5.json",
+    "mode": "chunked",
+    "naive": false,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "local",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 305598426,
+    "export_duration_us": 305560000,
+    "expected_frames": 7639,
+    "expected_frames_nominal": 7639.96065,
+    "timings": {
+      "chunks_s": 45.43029324998497,
+      "per_chunk_s": [
+        8.642673125024885,
+        5.447760417009704,
+        17.564115207991563,
+        2.5707801670068875,
+        11.202539542020531
+      ],
+      "audio_s": 14.640150124992942,
+      "video_and_audio_s": 60.070474084001034,
+      "mux_s": 5.590676624997286,
+      "total_s": 65.66623916599201
+    },
+    "chunks_total": 5,
+    "chunks_rendered": 5,
+    "chunks_reused": 0,
+    "chunk_frames": [
+      1496,
+      985,
+      2969,
+      388,
+      1801
+    ],
+    "chunk_files": [
+      "ef4b91b27e2ded7ffa3c069e.mp4",
+      "aeb3500778e0d5f0ed86d892.mp4",
+      "11e6c6eea82edd68c647ff49.mp4",
+      "5a163363c1d49b21da1f0ede.mp4",
+      "7374553eeb332210a7ccac2b.mp4"
+    ],
+    "audio_cmdline_chars": 10267
+  },
+  "sync": null,
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M1",
+    "ram_bytes": 8589934592,
+    "gpu": "Apple M1"
+  },
+  "ffmpeg_version": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "0b0c90d-dirty"
+}
