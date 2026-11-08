@@ -37,3 +37,11 @@ source_modules =
     toystudio.jobs.worker_main
 forbidden_modules =
     PySide6
+
+[importlinter:contract:engine-no-qt]
+name = engine does not import Qt
+type = forbidden
+source_modules =
+    toystudio.engine
+forbidden_modules =
+    PySide6

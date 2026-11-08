@@ -67,3 +67,29 @@ class Moment:
     @property
     def duration(self) -> int:
         return self.end - self.start
+
+
+class MediaKind(StrEnum):
+    VIDEO = "video"
+    MUSIC = "music"
+
+
+class MediaStatus(StrEnum):
+    OK = "ok"
+    CORRUPT = "corrupt"
+    MISSING = "missing"
+
+
+@dataclass(frozen=True)
+class MediaInfo:
+    duration_us: int
+    width: int  # display size, after rotation
+    height: int
+    rotation: int
+    fps: float
+    codec: str
+    hdr: bool
+    has_audio: bool
+    has_video: bool
+    bit_rate: int
+    creation_time: str | None

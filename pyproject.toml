@@ -7,7 +7,13 @@ name = "toystudio"
 version = "0.1.0"
 description = "Той Студия: auto-editing of celebration videos"
 requires-python = ">=3.12"
-dependencies = ["PySide6>=6.8", "psutil"]
+dependencies = [
+    "PySide6>=6.8",
+    "psutil",
+    "numpy",
+    "opencv-python-headless",
+    "comtypes; sys_platform == 'win32'",
+]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-qt", "ruff", "mypy", "import-linter"]
