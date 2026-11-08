@@ -9,7 +9,7 @@ import numpy as np
 from toystudio.core.models import QualityInterval, QualityLabel
 
 # Предварительные пороги: калибруются в 2б на реальных тоях.
-DARK_LUMA = 40.0  # средняя яркость, шкала 0–255
+DARK_LUMA = 40.0 / 255.0  # метрика яркости 0..1 (metrics.mean_brightness): luma 40 из 255
 BLUR_REL = 0.35  # резкость ниже BLUR_REL × медианы файла
 SHAKE_PX = 3.0  # сдвиг фазовой корреляции на кадре 160 px
 MIN_BAD_S = 1.0  # короче — отбрасываем
