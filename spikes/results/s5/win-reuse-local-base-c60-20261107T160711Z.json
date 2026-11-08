@@ -1,0 +1,93 @@
+{
+  "run": "reuse-local-base-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5.json",
+    "mode": "chunked",
+    "naive": false,
+    "pad": true,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "local",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 305598426,
+    "export_duration_us": 305560000,
+    "expected_frames": 7639,
+    "expected_frames_nominal": 7639.96065,
+    "timings": {
+      "chunks_s": 78.31476420001127,
+      "per_chunk_s": [
+        6.223675800021738,
+        8.539638699963689,
+        17.464235400082543,
+        21.219133700011298,
+        10.517471399856731,
+        14.344654300017282
+      ],
+      "audio_s": 9.774399599991739,
+      "video_and_audio_s": 88.08916909992695,
+      "mux_s": 5.993983800057322,
+      "total_s": 94.19395390013233
+    },
+    "chunks_total": 6,
+    "chunks_rendered": 6,
+    "chunks_reused": 0,
+    "chunk_frames": [
+      584,
+      816,
+      1779,
+      2087,
+      960,
+      1413
+    ],
+    "chunk_files": [
+      "facdf23227851a133cbba4db.mp4",
+      "5d622e6470b6faba03bff853.mp4",
+      "18b06ae5ac5de91ab1d1346a.mp4",
+      "b984aa9fb3bd56cd81f39588.mp4",
+      "c51bc47798257e6c38b7cd6a.mp4",
+      "1070246d227446c8c865eefd.mp4"
+    ],
+    "audio_cmdline_chars": 10386
+  },
+  "sync": null,
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "ram_bytes": 6287331328,
+    "gpu": "NVIDIA GeForce GTX 1650; AMD Radeon(TM) Graphics"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "19d54b5-dirty"
+}

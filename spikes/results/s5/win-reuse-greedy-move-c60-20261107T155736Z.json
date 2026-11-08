@@ -1,0 +1,86 @@
+{
+  "run": "reuse-greedy-move-c60",
+  "sources": "src 720p",
+  "manifest": {
+    "edl": "edl-seed5-move.json",
+    "mode": "chunked",
+    "naive": false,
+    "pad": true,
+    "encoder": "libx264",
+    "encoder_args": [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-b:v",
+      "12M",
+      "-maxrate",
+      "16M",
+      "-bufsize",
+      "24M",
+      "-g",
+      "50",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-flags",
+      "+cgop"
+    ],
+    "preset": {
+      "w": 1920,
+      "h": 1080,
+      "bitrate": "12M",
+      "maxrate": "16M",
+      "bufsize": "24M",
+      "fps": "25"
+    },
+    "fps": "25",
+    "chunk_s": 60.0,
+    "plan": "greedy",
+    "jobs": 1,
+    "parallel_audio": false,
+    "n_segments": 120,
+    "nominal_duration_us": 305598426,
+    "export_duration_us": 305560000,
+    "expected_frames": 7639,
+    "expected_frames_nominal": 7639.96065,
+    "timings": {
+      "chunks_s": 17.208587399916723,
+      "per_chunk_s": [
+        17.20686040003784
+      ],
+      "audio_s": 10.434846100164577,
+      "video_and_audio_s": 27.643441299907863,
+      "mux_s": 6.184118400095031,
+      "total_s": 33.89531460008584
+    },
+    "chunks_total": 5,
+    "chunks_rendered": 1,
+    "chunks_reused": 4,
+    "chunk_frames": [
+      1562,
+      1537,
+      1560,
+      1505,
+      1475
+    ],
+    "chunk_files": [
+      "3facd2c56c5144528d2f95a8.mp4",
+      "a01e940fec15164d1fe1a6cd.mp4",
+      "dd12afbbcbb4aa5bbeddfb42.mp4",
+      "360861ac0e95f9443fe72b21.mp4",
+      "db32b9cfe2205dc85083ba65.mp4"
+    ],
+    "audio_cmdline_chars": 10388
+  },
+  "sync": null,
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "ram_bytes": 6287331328,
+    "gpu": "NVIDIA GeForce GTX 1650; AMD Radeon(TM) Graphics"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "19d54b5-dirty"
+}

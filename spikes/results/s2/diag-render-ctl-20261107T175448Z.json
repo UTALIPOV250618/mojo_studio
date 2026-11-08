@@ -1,0 +1,241 @@
+{
+  "spike": "s2",
+  "mode": "render",
+  "args": {
+    "mode": "render",
+    "segments": 200,
+    "seed": 2,
+    "work": "C:\\Users\\oshis\\mojo_studio\\spikes\\data\\s2\\Той Студия",
+    "out": "diag-render-ctl",
+    "seeks": 100,
+    "steps": 50,
+    "rebuilds": 20,
+    "play_s": 30.0,
+    "no_music": false,
+    "fonts_dir": null,
+    "hwdec": "no",
+    "gop_s": 1.0,
+    "play_after_s": 0.0,
+    "skip_sync": true,
+    "only": "control_lead100,playback",
+    "block": false,
+    "mpv_opt": []
+  },
+  "edl": {
+    "segments": 200,
+    "frames": 12095,
+    "total_s": 345.306268,
+    "lead_us": 100,
+    "sources": {
+      "s25": {
+        "fps": "25",
+        "frames": 1500
+      },
+      "s2997": {
+        "fps": "30000/1001",
+        "frames": 1798
+      },
+      "s50": {
+        "fps": "50",
+        "frames": 3000
+      }
+    },
+    "url_chars": 18994,
+    "seg_len_s": {
+      "n": 200,
+      "min": 0.5,
+      "p50": 1.69,
+      "p95": 2.9,
+      "max": 3.0,
+      "mean": 1.73
+    }
+  },
+  "thresholds": {
+    "seam_mad_max": 2.0,
+    "painted_mad_max": 2.5,
+    "seek_p95_ms": 150.0,
+    "rebuild_max_ms": 300.0,
+    "step_max_ms": 100.0,
+    "sync_max_frames": 1,
+    "seam_audio_max": 0.01
+  },
+  "libmpv": {
+    "version": "mpv v0.42.0-5-g55d3feb45",
+    "ffmpeg_version": "N-128560-g967f0ffb1",
+    "configuration": "-Dprefix=/__w/mpv-winbuild/mpv-winbuild/mpv-winbuild-cmake/build64/install/x86_64-w64-mingw32 -Dlibdir=/__w/mpv-winbuild/mpv-winbuild/mpv-winbuild-cmake/build64/install/x86_64-w64-mingw32/lib -Ddefault_library=shared -Dprefer_static=true -Dgpl=false -Ddebug=true -Db_ndebug=true -Doptimization=3 -Db_lto=true -Db_lto_mode=thin -Dcplayer=false -Dlibmpv=true -Dpdf-build=disabled -Dlua=enabled -Djavascript=enabled -Dsdl2-gamepad=enabled -Dlibarchive=enabled -Dlibbluray=enabled -Ddvdnav=disabled -Duchardet=enabled -Drubberband=disabled -Dlcms2=enabled -Dopenal=disabled -Dspirv-cross=enabled -Dvulkan=enabled -Dvapoursynth=enabled -Dsubrandr=enabled -Dsixel=enabled -Dgl=enabled -Degl-angle=enabled -Dlibcurl=enabled -Dc_args=-Wno-error=int-conversion --cross-file=/__w/mpv-winbuild/mpv-winbuild/mpv-winbuild-cmake/build64/meson_cross.txt",
+    "gpl_false_in_configuration": true,
+    "library": "C:\\Users\\oshis\\mojo_studio\\spikes\\s2_player\\libmpv-2.dll",
+    "cli_features": null
+  },
+  "control_lead100": {
+    "lead_us": 100,
+    "segments": 200,
+    "first_frame_lost": 0,
+    "picture_wrong": 0,
+    "first_mad": {
+      "n": 200,
+      "min": 1.13,
+      "p50": 1.21,
+      "p95": 1.29,
+      "max": 1.32,
+      "mean": 1.21
+    },
+    "examples": [],
+    "picture_examples": []
+  },
+  "first_load_ms": 462.00460009276867,
+  "video_params": {
+    "pixelformat": "yuv420p",
+    "average-bpp": 12,
+    "w": 960,
+    "h": 540,
+    "dw": 960,
+    "dh": 540,
+    "crop-x": 0,
+    "crop-y": 0,
+    "crop-w": 960,
+    "crop-h": 540,
+    "aspect": 1.7777777777777777,
+    "aspect-name": "16:9",
+    "par": 1.0,
+    "sar": 1.7777777777777777,
+    "sar-name": "16:9",
+    "colormatrix": "bt.709",
+    "colorlevels": "limited",
+    "primaries": "bt.709",
+    "gamma": "bt.1886",
+    "sig-peak": 0.0,
+    "light": "display",
+    "chroma-location": "mpeg2/4/h264",
+    "stereo-in": "mono",
+    "rotate": 0,
+    "alpha": "none"
+  },
+  "hwdec_current": "no",
+  "duration_s": 345.3062679999999,
+  "app_nap_disabled": false,
+  "screen": {
+    "refresh_hz": 120.0,
+    "dpr": 1.25
+  },
+  "display-fps": null,
+  "estimated-display-fps": null,
+  "video-sync": "audio",
+  "playback": {
+    "played_s": 29.984,
+    "hwdec_current": "no",
+    "wall_s": 29.968,
+    "counters_delta": {
+      "frame-drop-count": 0,
+      "decoder-frame-drop-count": 0,
+      "vo-delayed-frame-count": 0,
+      "mistimed-frame-count": null,
+      "total-avsync-change": -1.5625000013388982e-05
+    },
+    "counter_events": [],
+    "drops_by_10s": {},
+    "avsync_ms": {
+      "n": 877,
+      "min": 0.0,
+      "p50": 0.01,
+      "p95": 0.02,
+      "max": 0.15,
+      "mean": 0.01
+    },
+    "paints": 876,
+    "paint_gap_ms": {
+      "n": 875,
+      "min": 17.98,
+      "p50": 33.93,
+      "p95": 41.01,
+      "max": 47.48,
+      "mean": 34.24
+    },
+    "paint_gaps_over_100ms": 0
+  },
+  "render_call_ms": {
+    "n": 882,
+    "min": 0.32,
+    "p50": 0.63,
+    "p95": 0.88,
+    "max": 76.65,
+    "mean": 0.75
+  },
+  "log_tail": [
+    "warn ao/wasapi: Error setting audio session name: ???????? ????? ???????. (0x80070057)",
+    "error libmpv_render: after creating texture: OpenGL error INVALID_ENUM.",
+    "error libmpv_render: after creating texture: OpenGL error INVALID_ENUM."
+  ],
+  "verdicts": {
+    "seams_0_bad": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "control_lead100_first_frames": {
+      "value": 0,
+      "threshold": 0,
+      "unit": "segments wrong",
+      "pass": true
+    },
+    "playback_0_dropped_or_delayed": {
+      "value": 0,
+      "threshold": 0,
+      "unit": "frames",
+      "pass": true
+    },
+    "playback_after_seeks_0_dropped_or_delayed": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "seek_painted_p95_le_150ms": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "seek_event_p95_le_150ms": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "rebuild_paused_le_300ms": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "rebuild_playing_le_300ms": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "frame_step_le_100ms_no_errors": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "sync_within_1_frame": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "seam_audio_no_glitch": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    },
+    "titles_rendered": {
+      "value": null,
+      "pass": null,
+      "reason": "not run"
+    }
+  },
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "ram_bytes": 6287331328,
+    "gpu": "NVIDIA GeForce GTX 1650; AMD Radeon(TM) Graphics"
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "git_rev": "19d54b5-dirty"
+}
