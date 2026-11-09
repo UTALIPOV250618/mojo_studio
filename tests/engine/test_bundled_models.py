@@ -4,11 +4,9 @@ import hashlib
 import numpy as np
 import pytest
 
-from tools.fetch_models import MODELS
+from tools.fetch_models import MODELS, main
 from toystudio.engine import models
 from toystudio.engine.models import model_path
-
-ort = pytest.importorskip("onnxruntime")
 
 
 def _present() -> bool:
@@ -26,6 +24,7 @@ def test_model_files_match_pinned_sha256():
 
 
 def _session(name):
+    ort = pytest.importorskip("onnxruntime")
     return ort.InferenceSession(str(model_path(name)), providers=["CPUExecutionProvider"])
 
 
@@ -57,3 +56,31 @@ def test_model_path_hint_when_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(models, "MODELS_DIR", tmp_path)
     with pytest.raises(FileNotFoundError, match="fetch_models.py"):
         model_path("silero_vad")
+
+
+def _patched(monkeypatch, url, sha="0" * 64):
+    monkeypatch.setattr("tools.fetch_models.MODELS", {"x": (url, sha, "silero_vad.onnx")})
+
+
+def test_verify_on_empty_dir_fails(tmp_path):
+    assert main(["--verify"], models_dir=tmp_path) == 1
+
+
+def test_wrong_sha_download_keeps_existing_file(tmp_path, monkeypatch):
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"bad")
+    d = tmp_path / "m"
+    d.mkdir()
+    (d / "silero_vad.onnx").write_bytes(b"good")
+    _patched(monkeypatch, src.as_uri())
+    assert main([], models_dir=d) == 1
+    assert (d / "silero_vad.onnx").read_bytes() == b"good"
+    assert not list(d.glob("*.part"))
+
+
+def test_missing_source_fails_without_part(tmp_path, monkeypatch):
+    d = tmp_path / "m"
+    d.mkdir()
+    _patched(monkeypatch, (tmp_path / "nope").as_uri())
+    assert main([], models_dir=d) == 1
+    assert not list(d.glob("*.part"))

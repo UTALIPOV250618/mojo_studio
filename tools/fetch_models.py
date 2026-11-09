@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import os
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -45,12 +46,23 @@ def _ok(path: Path, sha: str) -> bool:
     return path.is_file() and _sha256(path) == sha
 
 
-def _download(url: str, dest: Path) -> None:
+def _download(url: str, dest: Path, sha: str) -> bool:
+    """Fetch url into dest via a .part file; replace dest only if sha256 matches."""
     part = dest.with_name(dest.name + ".part")
-    with urllib.request.urlopen(url, timeout=120) as resp, part.open("wb") as out:
-        while chunk := resp.read(1 << 20):
-            out.write(chunk)
+    try:
+        with urllib.request.urlopen(url, timeout=120) as resp, part.open("wb") as out:
+            while chunk := resp.read(1 << 20):
+                out.write(chunk)
+    except (urllib.error.URLError, OSError) as exc:
+        part.unlink(missing_ok=True)
+        print(f"ERROR    download failed: {exc}", file=sys.stderr)
+        return False
+    if _sha256(part) != sha:
+        part.unlink(missing_ok=True)
+        print("MISMATCH downloaded file has a wrong sha256", file=sys.stderr)
+        return False
     os.replace(part, dest)
+    return True
 
 
 def main(argv: list[str] | None = None, models_dir: Path = MODELS_DIR) -> int:
@@ -68,10 +80,7 @@ def main(argv: list[str] | None = None, models_dir: Path = MODELS_DIR) -> int:
             failed += 1
             continue
         print(f"download {name} <- {url}")
-        _download(url, dest)
-        if not _ok(dest, sha):
-            dest.unlink(missing_ok=True)
-            print(f"MISMATCH {name}: downloaded file has a wrong sha256", file=sys.stderr)
+        if not _download(url, dest, sha):
             failed += 1
     return 1 if failed else 0
 
