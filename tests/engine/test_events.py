@@ -186,3 +186,9 @@ def test_events_progress_and_stop(tmp_path: Path) -> None:
     assert seen and seen[-1] == pytest.approx(4.0, abs=0.01)
     with pytest.raises(Stopped):
         detect_events(1, wav, on_progress=lambda _: None, should_stop=lambda: True)
+
+
+def test_class_scores_keeps_exactly_requested_rows() -> None:
+    n = 38_640  # the model returns 5 rows here; only 1 + (n - 15600) // 7680 = 4 are full
+    out = ev._class_scores(ev._session(), np.zeros(n, dtype=np.float32), 1 + (n - 15_600) // 7_680)
+    assert out.shape == (4, NCLS)

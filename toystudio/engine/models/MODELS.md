@@ -27,11 +27,11 @@ Run on CPU with `onnxruntime` (`CPUExecutionProvider`). Verified with onnxruntim
 - Size: 16 093 355 bytes
 - sha256: `d3835ffbbd4a1bb3e777f0ca217b5007907f5171dd5d17c4236b95b2af8f908e`
 - Input: `waveform` float32 `[num_samples]`, 1-D mono 16 kHz, nominal range [-1, 1], dynamic length (mel frontend is inside the graph)
-- Outputs (one row per frame, hop 0.48 s, window 0.96 s):
+- Outputs (one row per frame; frame = 15600 samples (0.975 s), hop 7680 samples (0.48 s)):
   - `output_0` float32 `[frames, 521]`: class scores
   - `output_1` float32 `[frames, 1024]`: embeddings
   - `output_2` float32 `[frames*96, 64]`: log-mel patches
-- Measured frames: 15600 samples -> 1, 16000 -> 2, 48000 -> 6. Formula: `frames = 1 + ceil(max(0, n - 15360) / 7680)`.
+- Row count (measured with onnxruntime 1.31.1, zero input): 15600 samples -> 1 row, 16000 -> 2, 23280 -> 2, 38640 -> 5, 48000 -> 6. The model also emits a trailing padded partial frame, and at some exact lengths (38640, 38641) one more row than that. Frame k depends only on samples `[k*7680, k*7680 + 15600)`, so callers must keep only the `1 + (n - 15600) // 7680` full rows (`n >= 15600`) and handle the tail themselves (`toystudio/engine/audio/events.py` pads it with zeros).
 
 ## yamnet_class_map.csv (521 AudioSet classes)
 

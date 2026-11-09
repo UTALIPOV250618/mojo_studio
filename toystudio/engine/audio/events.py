@@ -109,6 +109,16 @@ def _session() -> ort.InferenceSession:
     return ort.InferenceSession(str(model_path("yamnet")), opts, providers=["CPUExecutionProvider"])
 
 
+def _class_scores(session: ort.InferenceSession, chunk: np.ndarray, frames: int) -> np.ndarray:
+    """First `frames` rows of the model output.
+
+    The model's row count is off by one at some exact chunk lengths; frame k only depends on
+    its own samples, so keep exactly the frames asked for.
+    """
+    out = session.run(["output_0"], {"waveform": np.ascontiguousarray(chunk)})[0]
+    return out[:frames]
+
+
 def label_scores_from_wav(
     wav: Path,
     *,
@@ -129,10 +139,7 @@ def label_scores_from_wav(
     last_emit = 0.0
 
     def run(chunk: np.ndarray, frames: int) -> None:
-        out = session.run(["output_0"], {"waveform": np.ascontiguousarray(chunk)})[0]
-        # The model's frame count is off by one at some exact chunk lengths; frame k only
-        # depends on its own samples, so keep exactly the frames we asked for.
-        rows.append(label_scores(out[:frames]))
+        rows.append(label_scores(_class_scores(session, chunk, frames)))
 
     for start, block in read_blocks(wav, block_s):
         if should_stop is not None and should_stop():
