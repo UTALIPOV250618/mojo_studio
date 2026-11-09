@@ -149,15 +149,13 @@ def test_events_detects_music_like_tone_sequence(tmp_path: Path) -> None:
     assert sum(e.end_us - e.start_us for e in got) / 1e6 >= 10.0
 
 
-@pytest.mark.xfail(
-    reason="YAMNet does not label synthetic clicks as Applause (max 0.02); needs a real CC0 sample",
-    strict=False,
-)
-def test_events_detects_applause_like_noise(tmp_path: Path) -> None:
-    wav = write_wav(tmp_path / "a.wav", applause_like(6.0))
+def test_events_detects_applause_like_noise() -> None:
+    # Synthetic clicks are never labelled Applause by YAMNet (max 0.02), so this uses a real
+    # CC0 recording; see tests/data/SOURCES.md.
+    wav = Path(__file__).resolve().parents[1] / "data" / "applause_cc0_16k.wav"
     got = [e for e in run(wav) if e.label == AudioLabel.APPLAUSE]
     assert got, "no APPLAUSE event"
-    assert sum(e.end_us - e.start_us for e in got) / 1e6 >= 3.0
+    assert sum(e.end_us - e.start_us for e in got) / 1e6 >= 8.0
 
 
 def test_events_detects_speech_like(tmp_path: Path) -> None:
