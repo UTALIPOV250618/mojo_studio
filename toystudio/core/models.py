@@ -169,3 +169,10 @@ class SyncResult:
     media_id: int
     offset_us: int | None
     confidence: float
+
+
+@dataclass(frozen=True)
+class SpeechRegion:
+    start_us: int
+    end_us: int
+    prob: float  # mean speech probability over the region
