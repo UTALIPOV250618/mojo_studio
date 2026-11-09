@@ -154,6 +154,16 @@ def test_scene_cuts_and_quality_replace(tmp_path):
     assert s.quality_intervals(a) == [ivs[0]]
 
 
+def test_scene_cuts_reader_sorted_per_media(tmp_path):
+    s = new_store(tmp_path)
+    a, b = add_video(s, tmp_path, "a.MP4"), add_video(s, tmp_path, "b.MP4")
+    s.replace_scene_cuts(a, [30, 10, 20], [0.1, 0.2, 0.3])
+    s.replace_scene_cuts(b, [5], [0.5])
+    assert s.scene_cuts(a) == [10, 20, 30]
+    assert s.scene_cuts(b) == [5]
+    assert s.scene_cuts(999) == []
+
+
 def test_app_store_speed_and_status(tmp_path):
     a = AppStore(tmp_path / "app.db")
     assert a.speed("proxy", "cpu") is None

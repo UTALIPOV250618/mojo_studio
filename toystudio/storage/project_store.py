@@ -405,6 +405,12 @@ class ProjectStore:
             ).fetchone()
         return int(row[0])
 
+    def scene_cuts(self, media_id: int) -> list[int]:
+        rows = self._con.execute(
+            "SELECT at_us FROM scene_cut WHERE media_id=? ORDER BY at_us", (media_id,)
+        ).fetchall()
+        return [int(r[0]) for r in rows]
+
     def replace_quality(self, media_id: int, intervals: list[QualityInterval]) -> None:
         """Store problem intervals; CLEAR is the absence of a row and is not persisted."""
         with self._con:
