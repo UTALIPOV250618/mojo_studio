@@ -193,3 +193,20 @@ class AudioEvent:
     end_us: int
     label: AudioLabel
     score: float  # mean label score over the event
+
+
+@dataclass(frozen=True)
+class MomentRow:
+    """A detected moment as stored in the project database."""
+
+    id: int
+    media_id: int
+    type: MomentType
+    start_us: int
+    end_us: int
+    score: float
+    quality_label: QualityLabel
+    reasons: tuple[Reason, ...] = ()
+    mark: Mark = Mark.NONE
+    group_id: int | None = None
+    preview: str | None = None

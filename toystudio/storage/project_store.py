@@ -1,5 +1,6 @@
 """Per-project SQLite store (project.db) and folder layout."""
 
+import json
 import os
 import sqlite3
 import urllib.request
@@ -12,12 +13,19 @@ from typing import Literal, Self
 
 from toystudio.core.models import (
     STAGE_ORDER,
+    AudioEvent,
+    AudioLabel,
+    Mark,
     MediaInfo,
     MediaKind,
     MediaRow,
     MediaStatus,
+    MomentRow,
+    MomentType,
     QualityInterval,
     QualityLabel,
+    Reason,
+    SpeechRegion,
     StageName,
     StageRun,
     StageState,
@@ -426,6 +434,139 @@ class ProjectStore:
                 (offset_us, confidence, media_id),
             )
 
+    # --- audio events, speech regions and moments ---
+
+    def replace_audio(
+        self, media_id: int, regions: list[SpeechRegion], events: list[AudioEvent]
+    ) -> None:
+        with self._con:
+            self._con.execute("DELETE FROM speech_region WHERE media_id=?", (media_id,))
+            self._con.execute("DELETE FROM audio_event WHERE media_id=?", (media_id,))
+            self._con.executemany(
+                "INSERT INTO speech_region(media_id, start_us, end_us, prob) VALUES (?, ?, ?, ?)",
+                [(media_id, r.start_us, r.end_us, r.prob) for r in regions],
+            )
+            self._con.executemany(
+                "INSERT INTO audio_event(media_id, start_us, end_us, label, score)"
+                " VALUES (?, ?, ?, ?, ?)",
+                [(media_id, e.start_us, e.end_us, e.label.value, e.score) for e in events],
+            )
+
+    def speech_regions(self, media_id: int) -> list[SpeechRegion]:
+        rows = self._con.execute(
+            "SELECT start_us, end_us, prob FROM speech_region WHERE media_id=?"
+            " ORDER BY start_us, end_us",
+            (media_id,),
+        ).fetchall()
+        return [SpeechRegion(int(r[0]), int(r[1]), float(r[2] or 0.0)) for r in rows]
+
+    def audio_events(self, media_id: int) -> list[AudioEvent]:
+        rows = self._con.execute(
+            "SELECT media_id, start_us, end_us, label, score FROM audio_event WHERE media_id=?"
+            " ORDER BY start_us, end_us, label",
+            (media_id,),
+        ).fetchall()
+        return [
+            AudioEvent(int(r[0]), int(r[1]), int(r[2]), AudioLabel(r[3]), float(r[4] or 0.0))
+            for r in rows
+        ]
+
+    def replace_moments(self, media_id: int, moments: list[MomentRow]) -> list[int]:
+        """Replace a file's moments; returns the new ids in input order.
+
+        A new moment inherits mark and user_text from an old moment of the same type whose
+        overlap is at least 50 % of the shorter of the two (largest overlap wins); an old
+        moment is inherited by at most one new moment. Only the database is touched.
+        """
+        with self._con:
+            old = self._con.execute(
+                "SELECT id, type, start_us, end_us, mark, user_text FROM moment WHERE media_id=?",
+                (media_id,),
+            ).fetchall()
+            free = list(old)
+            self._con.execute("DELETE FROM moment WHERE media_id=?", (media_id,))
+            ids: list[int] = []
+            for m in moments:
+                best = None
+                best_overlap = 0
+                for o in free:
+                    if o[1] != m.type.value:
+                        continue
+                    overlap = min(m.end_us, int(o[3])) - max(m.start_us, int(o[2]))
+                    shorter = min(m.end_us - m.start_us, int(o[3]) - int(o[2]))
+                    if overlap > 0 and overlap * 2 >= shorter and overlap > best_overlap:
+                        best, best_overlap = o, overlap
+                mark, user_text = (m.mark.value, None)
+                if best is not None:
+                    free.remove(best)
+                    mark, user_text = best[4], best[5]
+                cur = self._con.execute(
+                    "INSERT INTO moment(media_id, type, start_us, end_us, score, quality_label,"
+                    " user_text, mark, group_id, reasons_json, preview)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        media_id,
+                        m.type.value,
+                        m.start_us,
+                        m.end_us,
+                        m.score,
+                        m.quality_label.value,
+                        user_text,
+                        mark,
+                        m.group_id,
+                        _reasons_to_json(m.reasons),
+                        m.preview,
+                    ),
+                )
+                ids.append(int(cur.lastrowid or 0))
+        return ids
+
+    def moments(self, media_id: int | None = None) -> list[MomentRow]:
+        sql = (
+            "SELECT id, media_id, type, start_us, end_us, score, quality_label, reasons_json,"
+            " mark, group_id, preview FROM moment"
+        )
+        args: tuple[int, ...] = ()
+        if media_id is not None:
+            sql += " WHERE media_id=?"
+            args = (media_id,)
+        rows = self._con.execute(sql + " ORDER BY media_id, start_us, id", args).fetchall()
+        return [
+            MomentRow(
+                id=int(r[0]),
+                media_id=int(r[1]),
+                type=MomentType(r[2]),
+                start_us=int(r[3]),
+                end_us=int(r[4]),
+                score=float(r[5] or 0.0),
+                quality_label=QualityLabel(r[6] or QualityLabel.CLEAR.value),
+                reasons=_reasons_from_json(r[7]),
+                mark=Mark(r[8]),
+                group_id=None if r[9] is None else int(r[9]),
+                preview=None if r[10] is None else str(r[10]),
+            )
+            for r in rows
+        ]
+
+    def set_group_ids(self, pairs: list[tuple[int, int | None]]) -> None:
+        with self._con:
+            self._con.executemany(
+                "UPDATE moment SET group_id=? WHERE id=?", [(g, mid) for mid, g in pairs]
+            )
+
+    def set_mark(self, moment_id: int, mark: Mark) -> None:
+        with self._con:
+            self._con.execute("UPDATE moment SET mark=? WHERE id=?", (mark.value, moment_id))
+
+    def moment_counts(self) -> dict[MomentType, int]:
+        """Moments per type over files with status OK."""
+        rows = self._con.execute(
+            "SELECT m.type, COUNT(*) FROM moment m JOIN media f ON f.id = m.media_id"
+            " WHERE f.status=? GROUP BY m.type",
+            (MediaStatus.OK.value,),
+        ).fetchall()
+        return {MomentType(r[0]): int(r[1]) for r in rows}
+
     # --- wizard step ---
 
     def step(self) -> Literal["files", "analysis", "analysis_done"]:
@@ -458,6 +599,18 @@ class ProjectStore:
         if sync is None or sync.state not in (*finished, StageState.FAILED):
             return "analysis"
         return "analysis_done"
+
+
+def _reasons_to_json(reasons: tuple[Reason, ...]) -> str:
+    return json.dumps(
+        [{"code": r.code, "ru": r.ru, "ky": r.ky} for r in reasons], ensure_ascii=False
+    )
+
+
+def _reasons_from_json(raw: str | None) -> tuple[Reason, ...]:
+    if not raw:
+        return ()
+    return tuple(Reason(str(d["code"]), str(d["ru"]), str(d["ky"])) for d in json.loads(raw))
 
 
 def _stage_row(r: tuple[object, ...]) -> StageRun:
