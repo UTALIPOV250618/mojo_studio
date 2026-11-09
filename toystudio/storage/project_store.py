@@ -431,15 +431,22 @@ class ProjectStore:
     def step(self) -> Literal["files", "analysis", "analysis_done"]:
         """Wizard step of the project.
 
-        "files" while analysis never started: no stage row at all (ruling R21; `analyze`
-        writes PENDING rows for every OK video and SYNC up front, `remove_media` drops a
-        file's rows). A file with a FAILED stage counts as finished (ruling R9), so does a
+        "files" while there is no video or analysis never started: no per-file stage row
+        (ruling R21; `analyze` writes PENDING rows for every OK video up front, `remove_media`
+        drops a file's rows, the project-level SYNC row does not count). A MISSING video keeps
+        the project in "analysis". A file with a FAILED stage counts as finished (ruling R9), so does a
         FAILED SYNC.
         """
-        videos = [m for m in self.list_media(MediaKind.VIDEO) if m.status is MediaStatus.OK]
-        started = self._con.execute("SELECT 1 FROM stage_run LIMIT 1").fetchone() is not None
-        if not started:
+        all_videos = self.list_media(MediaKind.VIDEO)
+        started = (
+            self._con.execute("SELECT 1 FROM stage_run WHERE media_id != 0 LIMIT 1").fetchone()
+            is not None
+        )
+        if not all_videos or not started:
             return "files"
+        if any(m.status is MediaStatus.MISSING for m in all_videos):
+            return "analysis"  # a disconnected drive: the analysis is not complete yet
+        videos = [m for m in all_videos if m.status is MediaStatus.OK]
         finished = (StageState.DONE, StageState.SKIPPED)
         for m in videos:
             runs = [self.stage(m.id, st) for st in STAGE_ORDER]

@@ -292,3 +292,24 @@ def test_readonly_uri_windows_drive_and_unc(monkeypatch):
     assert project_store.readonly_uri(r"\\server\share\p\project.db", win) == (
         "file:////server/share/p/project.db?mode=ro"
     )
+
+
+def test_step_back_to_files_when_all_videos_removed_after_start(tmp_path):
+    s = new_store(tmp_path)
+    mid = add_video(s, tmp_path)
+    finish_all(s, mid)
+    s.set_stage(0, StageName.SYNC, StageState.DONE)
+    assert s.step() == "analysis_done"
+    s.remove_media(mid)  # the project-level SYNC row survives
+    assert s.step() == "files"
+
+
+def test_step_stays_in_analysis_while_a_video_is_missing(tmp_path):
+    s = new_store(tmp_path)
+    a = add_video(s, tmp_path, "A.MP4")
+    b = add_video(s, tmp_path, "B.MP4")
+    finish_all(s, a)
+    s.set_stage(b, StageName.PROBE, StageState.PENDING)
+    s.set_stage(0, StageName.SYNC, StageState.DONE)
+    s.set_media_status(b, MediaStatus.MISSING)
+    assert s.step() == "analysis"

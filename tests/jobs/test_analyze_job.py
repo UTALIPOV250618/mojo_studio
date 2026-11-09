@@ -148,7 +148,7 @@ def test_analyze_marks_missing_file(tmp_path: Path) -> None:
         assert rows[2].status is MediaStatus.OK
         assert all(s.stage(2, st).state in FINISHED for st in STAGE_ORDER)
         assert s.stage(1, StageName.PROXY).state is StageState.PENDING
-        assert s.step() == "analysis_done"  # missing files do not block the wizard
+        assert s.step() == "analysis"  # a missing file keeps the analysis open
     finally:
         s.close()
     assert {"media_id": 1, "status": "missing"} in events(msgs, "media")
