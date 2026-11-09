@@ -12,6 +12,7 @@ dependencies = [
     "psutil",
     "numpy",
     "opencv-python-headless",
+    "onnxruntime",
     "comtypes; sys_platform == 'win32'",
 ]
 
