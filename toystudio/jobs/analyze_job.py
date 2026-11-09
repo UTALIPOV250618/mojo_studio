@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,8 +28,13 @@ from toystudio.engine.analysis.quality import bad_intervals
 from toystudio.engine.analysis.scenes import detect_cuts
 from toystudio.engine.analysis.single_pass import FfmpegFailed, Outputs, Stopped, outputs_for
 from toystudio.engine.analysis.sync import sync_project
+from toystudio.engine.audio.events import detect_events
+from toystudio.engine.audio.vad import detect_speech
 from toystudio.engine.media.probe import check_integrity, probe_media
-from toystudio.engine.media.thumbs import card_thumbnail
+from toystudio.engine.media.thumbs import card_thumbnail, frame_at
+from toystudio.engine.moments.group import group_ids
+from toystudio.engine.moments.rules import find_moments
+from toystudio.engine.moments.signals import load_signals
 from toystudio.jobs.import_job import restore_missing
 from toystudio.jobs.protocol import Event, Progress
 from toystudio.storage.app_store import AppStore
@@ -38,7 +44,10 @@ if TYPE_CHECKING:
     from toystudio.jobs.worker_main import JobContext
 
 STAGE_VERSION: dict[StageName, int] = {s: 1 for s in (*STAGE_ORDER, StageName.SYNC)}
-NOT_IMPLEMENTED = (StageName.SPEECH, StageName.MOMENTS)  # phase 2b
+# phase 2a wrote SKIPPED rows with version 1 for these two; 2 makes them run on old projects
+STAGE_VERSION[StageName.SPEECH] = 2
+STAGE_VERSION[StageName.MOMENTS] = 2
+SPEECH_X_RT = 30.0  # stage 2 (VAD + audio events) speed, x realtime of the audio
 SPEED_STAGE = "proxy"
 SPEED_ALPHA = 0.2
 ETA_EVERY_S = 2.0
@@ -56,6 +65,7 @@ class _Run:
     app: AppStore | None
     speeds: dict[str, float]
     proxy_left_s: dict[int, tuple[str, float]] = field(default_factory=dict)
+    speech_left_s: dict[int, float] = field(default_factory=dict)
     last_eta: float = float("-inf")
 
     @property
@@ -90,6 +100,7 @@ class _Run:
             return
         self.last_eta = now
         left = project_remaining_s(list(self.proxy_left_s.values()), self.speeds)
+        left += sum(self.speech_left_s.values()) / SPEECH_X_RT
         self.ctx.report(Event("eta", {"remaining_s": float(left)}))
 
     # --- speeds ---
@@ -126,7 +137,7 @@ class _Run:
             if not row.path.is_file():
                 self.store.set_media_status(media_id, MediaStatus.MISSING)
                 self.ctx.report(Event("media", {"media_id": media_id, "status": "missing"}))
-                self.proxy_left_s.pop(media_id, None)
+                self.drop_eta(media_id)
                 raise _SkipFile()
             try:
                 if self.ctx.should_stop():
@@ -142,9 +153,13 @@ class _Run:
                 raise
             except Exception:  # noqa: BLE001 - one bad file must not stop the others
                 traceback.print_exc(file=sys.stderr)
-                self.proxy_left_s.pop(media_id, None)
+                self.drop_eta(media_id)
                 self.finish(media_id, stage, StageState.FAILED, error_code="error")
                 raise _SkipFile() from None
+
+    def drop_eta(self, media_id: int) -> None:
+        self.proxy_left_s.pop(media_id, None)
+        self.speech_left_s.pop(media_id, None)
 
     def run_stage(self, row: MediaRow, stage: StageName) -> None:
         out = outputs_for(self.cache, row.id)
@@ -152,8 +167,8 @@ class _Run:
             self.probe(row)
         elif stage is StageName.PROXY:
             self.proxy(row, out)
-        elif stage in NOT_IMPLEMENTED:
-            self.finish(row.id, stage, StageState.SKIPPED)
+        elif stage is StageName.SPEECH:
+            self.speech(row, out)
         elif stage is StageName.SCENES:
             cuts = detect_cuts(_metrics(out), fps=single_pass.METRIC_FPS)
             self.store.replace_scene_cuts(row.id, [c for c, _ in cuts], [s for _, s in cuts])
@@ -162,6 +177,8 @@ class _Run:
             intervals = bad_intervals(row.id, _metrics(out), fps=single_pass.METRIC_FPS)
             self.store.replace_quality(row.id, intervals)
             self.finish(row.id, stage, StageState.DONE, found=len(intervals))
+        elif stage is StageName.MOMENTS:
+            self.moments(row, out)
         else:  # pragma: no cover - STAGE_ORDER is closed
             raise ValueError(f"unexpected per-file stage {stage}")
 
@@ -178,9 +195,11 @@ class _Run:
             self.store.set_media_status(row.id, MediaStatus.CORRUPT)
             self.finish(row.id, StageName.PROBE, StageState.FAILED, error_code="corrupt")
             self.ctx.report(Event("media", {"media_id": row.id, "status": "corrupt"}))
-            self.proxy_left_s.pop(row.id, None)
+            self.drop_eta(row.id)
             raise _SkipFile()
         self.proxy_left_s[row.id] = (profile_key(info), info.duration_us / US_PER_S)
+        if info.has_audio and not self.is_current(row.id, StageName.SPEECH):
+            self.speech_left_s[row.id] = info.duration_us / US_PER_S
         self.finish(row.id, StageName.PROBE, StageState.DONE)
 
     def proxy(self, row: MediaRow, out: Outputs) -> None:
@@ -201,7 +220,7 @@ class _Run:
                     row.path, info, out, on_progress=on_progress, should_stop=self.ctx.should_stop
                 )
             except FfmpegFailed:
-                self.proxy_left_s.pop(row.id, None)
+                self.drop_eta(row.id)
                 self.finish(row.id, StageName.PROXY, StageState.FAILED, error_code="ffmpeg")
                 raise _SkipFile() from None
             self.record_speed(info, total_s, time.monotonic() - started)
@@ -209,6 +228,64 @@ class _Run:
         self.finish(row.id, StageName.PROXY, StageState.DONE)
         self.eta(force=True)
         self.card(out.proxy)
+
+    def speech(self, row: MediaRow, out: Outputs) -> None:
+        """Stage 2: speech regions (VAD) for the first half of the progress, events second."""
+        if not out.wav.is_file():  # the file has no audio
+            self.speech_left_s.pop(row.id, None)
+            self.finish(row.id, StageName.SPEECH, StageState.SKIPPED)
+            return
+        info = row.info
+        assert info is not None  # PROBE is done before SPEECH
+        total_s = info.duration_us / US_PER_S
+
+        def progress(part: int) -> Callable[[float], None]:
+            def on_progress(done_s: float) -> None:
+                done = min((part + min(done_s, total_s) / total_s) / 2, 1.0) * total_s
+                self.ctx.report(Progress(StageName.SPEECH.value, done, total_s, str(row.id)))
+                self.speech_left_s[row.id] = max(total_s - done, 0.0)
+                self.eta()
+
+            return on_progress
+
+        regions = detect_speech(out.wav, on_progress=progress(0), should_stop=self.ctx.should_stop)
+        evs = detect_events(
+            row.id, out.wav, on_progress=progress(1), should_stop=self.ctx.should_stop
+        )
+        self.store.replace_audio(row.id, regions, evs)
+        self.ctx.report(Progress(StageName.SPEECH.value, total_s, total_s, str(row.id)))
+        self.speech_left_s.pop(row.id, None)
+        self.finish(row.id, StageName.SPEECH, StageState.DONE, found=len(regions))
+        self.eta(force=True)
+
+    def moments(self, row: MediaRow, out: Outputs) -> None:
+        """Stage 5: moment rules over the file's signals, a preview frame for each moment."""
+        found = find_moments(load_signals(self.store, self.cache, row.id))
+        old = [m.preview for m in self.store.moments(row.id) if m.preview]
+        ids = self.store.replace_moments(row.id, found)
+        for rel in old:  # ids are never reused, so old previews are never the new ones
+            (self.store.root / rel).unlink(missing_ok=True)
+        previews: list[str | None] = []
+        for mid, m in zip(ids, found, strict=True):
+            if self.ctx.should_stop():
+                raise Stopped()
+            previews.append(self.preview(out.proxy, mid, (m.start_us + m.end_us) // 2))
+        self.store.set_previews(list(zip(ids, previews, strict=True)))
+        for mid, m, preview in zip(ids, found, previews, strict=True):
+            payload = {"media_id": row.id, "moment_id": mid, "type": m.type.value,
+                       "start_us": m.start_us, "end_us": m.end_us, "score": m.score,
+                       "preview": preview}  # fmt: skip
+            self.ctx.report(Event("moment", payload))
+        self.finish(row.id, StageName.MOMENTS, StageState.DONE, found=len(found))
+
+    def preview(self, proxy: Path, moment_id: int, at_us: int) -> str | None:
+        rel = f"cache/thumbs/m{moment_id}.jpg"
+        try:
+            frame_at(proxy, at_us, self.store.root / rel)
+        except (RuntimeError, ValueError, OSError):
+            traceback.print_exc(file=sys.stderr)
+            return None  # a missing preview must not fail the stage
+        return rel
 
     def card(self, proxy: Path) -> None:
         card = self.cache / "thumbs" / "card.jpg"
@@ -238,6 +315,16 @@ class _Run:
             self.finish(PROJECT_MEDIA_ID, stage, StageState.FAILED, error_code="error")
             return
         self.finish(PROJECT_MEDIA_ID, stage, StageState.DONE)
+        self.group()
+
+    def group(self) -> None:
+        """The same moment seen by several cameras shares a group (needs sync offsets)."""
+        try:
+            ok = {m.id: m.sync_offset_us for m in _ok_videos(self.store)}
+            moments = [m for m in self.store.moments() if m.media_id in ok]
+            self.store.set_group_ids(group_ids(moments, ok))
+        except Exception:  # noqa: BLE001 - moments stay usable without groups
+            traceback.print_exc(file=sys.stderr)
 
 
 def _metrics(out: Outputs) -> dict[str, np.ndarray]:
@@ -273,6 +360,8 @@ def run(ctx: JobContext) -> None:
                     store.set_stage(m.id, stage, StageState.PENDING, version=STAGE_VERSION[stage])
             if m.info is not None and not r.is_current(m.id, StageName.PROXY):
                 r.proxy_left_s[m.id] = (profile_key(m.info), m.info.duration_us / US_PER_S)
+            if m.info is not None and m.info.has_audio and not r.is_current(m.id, StageName.SPEECH):
+                r.speech_left_s[m.id] = m.info.duration_us / US_PER_S
         if store.stage(PROJECT_MEDIA_ID, StageName.SYNC) is None:
             store.set_stage(PROJECT_MEDIA_ID, StageName.SYNC, StageState.PENDING)
         r.eta(force=True)

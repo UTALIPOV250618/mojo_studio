@@ -562,6 +562,13 @@ class ProjectStore:
                 "UPDATE moment SET group_id=? WHERE id=?", [(g, mid) for mid, g in pairs]
             )
 
+    def set_previews(self, pairs: list[tuple[int, str | None]]) -> None:
+        """(moment id, preview path relative to the project root)."""
+        with self._con:
+            self._con.executemany(
+                "UPDATE moment SET preview=? WHERE id=?", [(p, mid) for mid, p in pairs]
+            )
+
     def set_mark(self, moment_id: int, mark: Mark) -> None:
         with self._con:
             self._con.execute("UPDATE moment SET mark=? WHERE id=?", (mark.value, moment_id))

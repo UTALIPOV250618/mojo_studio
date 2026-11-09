@@ -1,14 +1,27 @@
 """Worker job `analyze`: per-stage checkpoints, stop/resume, sync, progress and ETA."""
 
+import itertools
 from datetime import date
 from pathlib import Path
 
+import numpy as np
+
 from tests.jobs.worker_run import events, is_stage, kill_tree, run_raw, run_until, run_worker
-from tests.media_fixtures import make_clip, make_noise_clip, make_truncated, needs_ffmpeg
+from tests.media_fixtures import (
+    make_clip,
+    make_noise_clip,
+    make_truncated,
+    make_wav_clip,
+    needs_ffmpeg,
+    noise_burst_track,
+    read_wav16,
+    write_wav16,
+)
 from toystudio.core.models import (
     STAGE_ORDER,
     MediaKind,
     MediaStatus,
+    MomentType,
     StageName,
     StageState,
     ToiKind,
@@ -57,7 +70,8 @@ def test_analyze_two_files_and_sync(tmp_path: Path) -> None:
             (0, StageName.SYNC),
         }
         assert all(st.state in FINISHED for st in stages)
-        assert s.stage(1, StageName.SPEECH).state is StageState.SKIPPED
+        assert s.stage(1, StageName.SPEECH).state is StageState.DONE
+        assert s.stage(1, StageName.MOMENTS).state is StageState.DONE
         assert s.stage(1, StageName.PROXY).state is StageState.DONE
         rows = {m.id: m for m in s.list_media()}
         assert rows[1].sync_offset_us == 0
@@ -326,3 +340,198 @@ def test_unexpected_sync_error_marks_sync_failed_and_finishes(tmp_path: Path, mo
         assert s.step() == "analysis_done"
     finally:
         s.close()
+
+
+# --- stage 2 (speech regions, audio events) and stage 5 (moments) ---
+
+SR = 16_000
+APPLAUSE_WAV = Path(__file__).resolve().parents[1] / "data" / "applause_cc0_16k.wav"
+MOMENT_KEYS = {"media_id", "moment_id", "type", "start_us", "end_us", "score", "preview"}
+
+
+def _toast_clip(tmp_path: Path) -> Path:
+    """30 s of speech-like signal, then the real CC0 applause (10 s)."""
+    from tests.engine.test_vad import speechlike
+
+    speech = (speechlike(30) * 32767).astype(np.int16)
+    track = np.concatenate([speech, read_wav16(APPLAUSE_WAV)])
+    wav = write_wav16(tmp_path / "src" / "тост.wav", track)
+    return make_wav_clip(tmp_path / "src" / "тост.mp4", wav)
+
+
+def _applause_clip(tmp_path: Path) -> Path:
+    return make_wav_clip(tmp_path / "src" / "кол чабуу.mp4", APPLAUSE_WAV)
+
+
+def _found(msgs: list, media_id: int, stage: str) -> object:
+    (e,) = [e for e in events(msgs, "stage") if (e["media_id"], e["stage"], e["state"])
+            == (media_id, stage, "done")]  # fmt: skip
+    return e["found"]
+
+
+def test_analyze_finds_toast_and_applause(tmp_path: Path) -> None:
+    project = _project(tmp_path, _toast_clip(tmp_path))
+    msgs: list = []
+    s = run_worker("analyze", project, app_db=tmp_path / "app.db", msgs=msgs)
+    try:
+        assert s.stage(1, StageName.SPEECH).state is StageState.DONE
+        regions = s.speech_regions(1)
+        assert regions and _found(msgs, 1, "speech") == len(regions)
+        moments = s.moments(1)
+        by_type = {m.type: m for m in moments}
+        assert MomentType.TOAST in by_type and MomentType.APPLAUSE in by_type, moments
+        toast, applause = by_type[MomentType.TOAST], by_type[MomentType.APPLAUSE]
+        assert toast.start_us < 3_000_000 and toast.end_us > 25_000_000
+        assert applause.start_us >= 28_000_000
+        assert _found(msgs, 1, "moments") == len(moments)
+    finally:
+        s.close()
+    speech = [m for m in msgs if isinstance(m, Progress) and m.stage == "speech" and m.total > 1]
+    assert speech and abs(speech[-1].total - 40.0) < 0.5
+    assert speech[-1].done == speech[-1].total
+    assert all(a.done <= b.done for a, b in itertools.pairwise(speech))
+
+
+def test_analyze_no_audio_skips_speech_and_finds_nothing(tmp_path: Path) -> None:
+    clip = make_clip(tmp_path / "src" / "тихо.mp4", duration_s=3, size="320x180", audio=False)
+    project = _project(tmp_path, clip)
+    msgs: list = []
+    s = run_worker("analyze", project, app_db=tmp_path / "app.db", msgs=msgs)
+    try:
+        assert s.stage(1, StageName.SPEECH).state is StageState.SKIPPED
+        assert s.stage(1, StageName.MOMENTS).state is StageState.DONE
+        assert s.speech_regions(1) == [] and s.audio_events(1) == [] and s.moments() == []
+        assert s.step() == "analysis_done"
+    finally:
+        s.close()
+    skipped = [
+        e for e in events(msgs, "stage") if e["stage"] == "speech" and e["state"] == "skipped"
+    ]
+    assert skipped == [{"media_id": 1, "stage": "speech", "state": "skipped", "found": None}]
+    assert _found(msgs, 1, "moments") == 0
+    assert events(msgs, "moment") == []
+
+
+class _StopInSpeech(_Ctx):
+    """Asks to stop as soon as the SPEECH stage of any file has started."""
+
+    def should_stop(self) -> bool:
+        return any(is_stage("speech", "running")(m) for m in self.msgs)
+
+
+def test_stop_during_speech_resumes_without_duplicates(tmp_path: Path) -> None:
+    project = _project(tmp_path, _applause_clip(tmp_path))
+    app_db = tmp_path / "app.db"
+    ctx = _StopInSpeech(project, app_db)
+    assert worker_main_run(ctx) == 1
+    s = ProjectStore.open(project)
+    try:
+        assert s.stage(1, StageName.PROXY).state is StageState.DONE
+        assert s.stage(1, StageName.SPEECH).state is StageState.INTERRUPTED
+        assert s.stage(1, StageName.MOMENTS).state is StageState.PENDING
+        assert s.audio_events(1) == [] and s.moments() == []
+    finally:
+        s.close()
+
+    def full_run() -> tuple[list, list, list]:
+        c = _Ctx(project, app_db)
+        assert worker_main_run(c) == 0
+        st = ProjectStore.open(project)
+        try:
+            assert all(r.state in FINISHED for r in st.stages())
+            return st.speech_regions(1), st.audio_events(1), st.moments(1)
+        finally:
+            st.close()
+
+    regions, evs, moments = full_run()
+    assert evs and moments
+    thumbs = project / "cache" / "thumbs"
+    assert sorted(p.name for p in thumbs.glob("m*.jpg")) == sorted(f"m{m.id}.jpg" for m in moments)
+
+    # a stop after the stages wrote their rows: the rerun recomputes them, nothing doubles
+    s = ProjectStore.open(project)
+    try:
+        s.set_stage(1, StageName.SPEECH, StageState.INTERRUPTED)
+        s.set_stage(1, StageName.MOMENTS, StageState.INTERRUPTED)
+    finally:
+        s.close()
+    regions2, evs2, moments2 = full_run()
+    assert regions2 == regions and evs2 == evs
+    assert [(m.type, m.start_us, m.end_us) for m in moments2] == [
+        (m.type, m.start_us, m.end_us) for m in moments
+    ]
+    assert min(m.id for m in moments2) > max(m.id for m in moments)  # ids are never reused
+    assert sorted(p.name for p in thumbs.glob("m*.jpg")) == sorted(
+        f"m{m.id}.jpg" for m in moments2
+    )  # old previews are removed
+
+
+def test_moment_events_sent_with_preview(tmp_path: Path) -> None:
+    project = _project(tmp_path, _applause_clip(tmp_path))
+    msgs: list = []
+    s = run_worker("analyze", project, app_db=tmp_path / "app.db", msgs=msgs)
+    try:
+        stored = {m.id: m for m in s.moments(1)}
+    finally:
+        s.close()
+    sent = events(msgs, "moment")
+    assert sent and len(sent) == len(stored)
+    assert any(e["type"] == "applause" for e in sent)
+    for e in sent:
+        assert set(e) == MOMENT_KEYS and e["media_id"] == 1
+        m = stored[e["moment_id"]]
+        assert (e["type"], e["start_us"], e["end_us"]) == (m.type.value, m.start_us, m.end_us)
+        assert e["score"] == m.score
+        assert e["preview"] == m.preview == f"cache/thumbs/m{m.id}.jpg"
+        jpg = project / e["preview"]
+        assert jpg.is_file() and jpg.read_bytes()[:2] == b"\xff\xd8"
+    payloads = [m.payload for m in msgs if hasattr(m, "payload")]
+    done = payloads.index({"media_id": 1, "stage": "moments", "state": "done", "found": len(sent)})
+    assert all(payloads.index(e) < done for e in sent)
+    assert not list((project / "cache").rglob("*.part"))
+
+
+def test_moments_grouped_after_sync(tmp_path: Path) -> None:
+    # one 40 s track (noise bursts for sync, the CC0 applause at 15-25 s); camera 2 starts at 2 s
+    track = noise_burst_track(40, seed=7)
+    track[15 * SR : 25 * SR] = read_wav16(APPLAUSE_WAV)
+    src = tmp_path / "src"
+    a = make_wav_clip(src / "камера 1.mp4", write_wav16(src / "a.wav", track))
+    b = make_wav_clip(src / "камера 2.mp4", write_wav16(src / "b.wav", track[2 * SR :]))
+    project = _project(tmp_path, a, b)
+    s = run_worker("analyze", project, app_db=tmp_path / "app.db")
+    try:
+        assert s.stage(0, StageName.SYNC).state is StageState.DONE
+        rows = {m.id: m for m in s.list_media()}
+        assert abs(rows[2].sync_offset_us - 2_000_000) <= 20_000
+        claps = [m for m in s.moments() if m.type is MomentType.APPLAUSE]
+        assert {m.media_id for m in claps} == {1, 2}, s.moments()
+        assert len({m.group_id for m in claps}) == 1
+        assert claps[0].group_id == min(m.id for m in claps)
+        assert all(m.group_id is not None for m in s.moments())
+    finally:
+        s.close()
+
+
+def test_failed_preview_or_grouping_does_not_fail_analysis(tmp_path: Path, monkeypatch) -> None:
+    project = _project(tmp_path, _applause_clip(tmp_path))
+
+    def no_frame(*_a, **_k):  # type: ignore[no-untyped-def]
+        raise RuntimeError("ffmpeg broke")
+
+    def no_groups(*_a, **_k):  # type: ignore[no-untyped-def]
+        raise RuntimeError("grouping broke")
+
+    monkeypatch.setattr(analyze_job, "frame_at", no_frame)
+    monkeypatch.setattr(analyze_job, "group_ids", no_groups)
+    ctx = _Ctx(project, tmp_path / "app.db")
+    assert worker_main_run(ctx) == 0 and isinstance(ctx.msgs[-1], Done)
+    s = ProjectStore.open(project)
+    try:
+        assert s.stage(1, StageName.MOMENTS).state is StageState.DONE
+        assert s.stage(0, StageName.SYNC).state is StageState.DONE
+        moments = s.moments(1)
+        assert moments and all(m.preview is None and m.group_id is None for m in moments)
+    finally:
+        s.close()
+    assert all(e["preview"] is None for e in events(ctx.msgs, "moment"))

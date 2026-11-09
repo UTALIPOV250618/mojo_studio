@@ -117,3 +117,41 @@ def make_noise_clip(
     finally:
         wav.unlink(missing_ok=True)
     return path
+
+
+def write_wav16(path: Path, samples: np.ndarray, rate: int = 16_000) -> Path:
+    """Mono 16-bit wav from int16 samples or floats in [-1, 1]."""
+    import wave
+
+    pcm = samples if samples.dtype == np.int16 else (np.clip(samples, -1, 1) * 32767)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm.astype("<i2").tobytes())
+    return path
+
+
+def read_wav16(path: Path) -> np.ndarray:
+    import wave
+
+    with wave.open(str(path), "rb") as w:
+        return np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").copy()
+
+
+def make_wav_clip(path: Path, wav: Path, *, size: str = "320x180", fps: int = 25) -> Path:
+    """Test-pattern video as long as `wav`, with `wav` as its (AAC) audio track."""
+    import wave
+
+    with wave.open(str(wav), "rb") as w:
+        duration_s = w.getnframes() / w.getframerate()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y",
+         "-f", "lavfi", "-i", f"testsrc2=size={size}:rate={fps}:duration={duration_s}",
+         "-i", str(wav), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+         "-g", str(fps), "-c:a", "aac", "-b:a", "128k", "-shortest", str(path)],
+        check=True, capture_output=True,
+    )  # fmt: skip
+    return path

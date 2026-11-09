@@ -106,6 +106,10 @@ def test_moment_fields_roundtrip_and_group_and_mark(tmp_path):
     assert s.moments(mid)[0].group_id == 7
     s.set_group_ids([(i, None)])
     assert s.moments(mid)[0].group_id is None
+    s.set_previews([(i, f"cache/thumbs/m{i}.jpg")])
+    assert s.moments(mid)[0].preview == f"cache/thumbs/m{i}.jpg"
+    s.set_previews([(i, None)])
+    assert s.moments(mid)[0].preview is None
 
 
 def test_moment_counts(tmp_path):
