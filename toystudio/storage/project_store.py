@@ -480,7 +480,8 @@ class ProjectStore:
         """
         with self._con:
             old = self._con.execute(
-                "SELECT id, type, start_us, end_us, mark, user_text FROM moment WHERE media_id=?",
+                "SELECT id, type, start_us, end_us, mark, user_text, transcript_excerpt FROM moment"
+                " WHERE media_id=?",
                 (media_id,),
             ).fetchall()
             free = list(old)
@@ -496,14 +497,14 @@ class ProjectStore:
                     shorter = min(m.end_us - m.start_us, int(o[3]) - int(o[2]))
                     if overlap > 0 and overlap * 2 >= shorter and overlap > best_overlap:
                         best, best_overlap = o, overlap
-                mark, user_text = (m.mark.value, None)
+                mark, user_text, excerpt = (m.mark.value, None, None)
                 if best is not None:
                     free.remove(best)
-                    mark, user_text = best[4], best[5]
+                    mark, user_text, excerpt = best[4], best[5], best[6]
                 cur = self._con.execute(
                     "INSERT INTO moment(media_id, type, start_us, end_us, score, quality_label,"
-                    " user_text, mark, group_id, reasons_json, preview)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " user_text, transcript_excerpt, mark, group_id, reasons_json, preview)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         media_id,
                         m.type.value,
@@ -512,6 +513,7 @@ class ProjectStore:
                         m.score,
                         m.quality_label.value,
                         user_text,
+                        excerpt,
                         mark,
                         m.group_id,
                         _reasons_to_json(m.reasons),

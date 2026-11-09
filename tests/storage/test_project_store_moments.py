@@ -75,7 +75,7 @@ def test_replace_moments_keeps_marks_of_matching_moments(tmp_path):
             moment(mid, 41_000_000, 49_000_000, MomentType.DANCE),  # contained, 100 % of shorter
         ],
     )
-    assert len(new_ids) == 4
+    assert len(new_ids) == 4 and not set(new_ids) & set(ids)
     got = {m.id: m for m in s.moments(mid)}
     assert [got[i].mark for i in new_ids] == [Mark.MUST, Mark.NONE, Mark.NONE, Mark.MUST]
     # one old moment carries over to at most one new moment
@@ -160,3 +160,41 @@ def test_open_readonly_reads_moments(tmp_path):
     assert len(ro.moments()) == 1 and ro.moment_counts() == {MomentType.GIFTS: 1}
     assert len(ro.speech_regions(mid)) == 1 and len(ro.audio_events(mid)) == 1
     ro.close()
+
+
+def test_moment_ids_never_reused_and_excerpt_carried(tmp_path):
+    s = new_store(tmp_path)
+    mid = add_video(s, tmp_path)
+    first = s.replace_moments(mid, [moment(mid, 0, 10), moment(mid, 20, 30)])
+    s.set_mark(first[0], Mark.MUST)
+    s._con.execute(
+        "UPDATE moment SET transcript_excerpt='тост', user_text='u' WHERE id=?", (first[0],)
+    )
+    second = s.replace_moments(mid, [moment(mid, 0, 10), moment(mid, 50, 60)])
+    assert not set(first) & set(second) and min(second) > max(first)
+    row = s._con.execute(
+        "SELECT mark, transcript_excerpt, user_text FROM moment WHERE id=?", (second[0],)
+    ).fetchone()
+    assert row == ("must", "тост", "u")
+
+
+def test_migrated_v2_new_moment_ids_above_old_max(tmp_path):
+    root = tmp_path / "p"
+    root.mkdir()
+    con = sqlite3.connect(root / "project.db")
+    for name in ("0001_init.sql", "0002_analysis.sql"):
+        sql = resources.files("toystudio.storage").joinpath("migrations", name)
+        con.executescript(sql.read_text(encoding="utf-8"))
+    con.execute("INSERT INTO project VALUES (1, 'Той', 'wedding', NULL, 'n', 'n', 2)")
+    con.execute("INSERT INTO media(id, kind, path, size) VALUES (1, 'video', 'a.mp4', 5)")
+    con.execute(
+        "INSERT INTO moment(id, media_id, type, start_us, end_us, score, mark, transcript_excerpt)"
+        " VALUES (7, 1, 'toast', 0, 10, 0.5, 'must', 'x')"
+    )
+    con.execute("PRAGMA user_version=2")
+    con.commit()
+    con.close()
+    s = ProjectStore.open(root)
+    assert [m.id for m in s.moments(1)] == [7]
+    (new,) = s.replace_moments(1, [moment(1, 100, 200, MomentType.DANCE)])
+    assert new > 7
