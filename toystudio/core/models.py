@@ -176,3 +176,20 @@ class SpeechRegion:
     start_us: int
     end_us: int
     prob: float  # mean speech probability over the region
+
+
+class AudioLabel(StrEnum):
+    SPEECH = "speech"
+    APPLAUSE = "applause"
+    MUSIC = "music"
+    CHEER = "cheer"
+    LAUGHTER = "laughter"
+
+
+@dataclass(frozen=True)
+class AudioEvent:
+    media_id: int
+    start_us: int
+    end_us: int
+    label: AudioLabel
+    score: float  # mean label score over the event
