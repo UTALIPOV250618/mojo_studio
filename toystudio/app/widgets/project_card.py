@@ -16,6 +16,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QFrame, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
 
+from toystudio.app.theme.apply import set_variant
 from toystudio.app.widgets.elided import ElidedLabel
 from toystudio.app.widgets.status_badge import Status, StatusBadge
 from toystudio.core.format import format_timecode
@@ -116,6 +117,7 @@ class ProjectCard(QFrame):
         self._progress_line.setProperty("role", "caption")
         self._progress_line.setProperty("tone", "teal")
         self._bar = QProgressBar()
+        set_variant(self._bar, "bar", "thin")
         self._bar.setTextVisible(False)
         self._bar.setRange(0, 100)
         for w in (self._name, self._meta, self._bar, self._progress_line):

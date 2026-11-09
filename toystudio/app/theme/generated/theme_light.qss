@@ -208,13 +208,13 @@ QLabel#ProjectPreview {
     border-top-left-radius: 10px;
     border-top-right-radius: 10px;
 }
-QProgressBar {
+QProgressBar[bar="thin"] {
     background: #e2e5e9;
     border: none;
     max-height: 4px;
     min-height: 4px;
 }
-QProgressBar::chunk { background: #1f6f9e; }
+QProgressBar[bar="thin"]::chunk { background: #1f6f9e; }
 
 /* AnalysisStage */
 QFrame#AnalysisStage { border-radius: 6px; background: transparent; }

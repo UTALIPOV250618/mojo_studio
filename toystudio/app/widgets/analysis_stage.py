@@ -39,6 +39,7 @@ class AnalysisStage(QFrame):
         self.found_label.setProperty("role", "caption")
         self.found_label.setWordWrap(True)
         self._bar = QProgressBar()
+        set_variant(self._bar, "bar", "thin")
         self._bar.setRange(0, 100)
         self._bar.setTextVisible(False)
         for w in (self._title, self.found_label, self._bar):

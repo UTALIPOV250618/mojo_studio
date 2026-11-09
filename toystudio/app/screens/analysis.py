@@ -49,6 +49,7 @@ class AnalysisScreen(QWidget):
         self.error_banner = Banner("error")
         self.error_banner.hide()
         self.overall_bar = QProgressBar()
+        set_variant(self.overall_bar, "bar", "thin")
         self.overall_bar.setRange(0, 100)
         self.overall_bar.setTextVisible(False)
         self.eta_label = QLabel()
