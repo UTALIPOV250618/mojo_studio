@@ -26,4 +26,6 @@ python -m toystudio.app.main
 - список проектов и скорости анализа — `%APPDATA%\ToyStudio\app.db` (вне Windows: `~/.toystudio/app.db`);
 - `TOYSTUDIO_HOME=<папка>` кладёт и проекты (`<папка>/projects`), и `app.db` в одну папку — для тестов и переносного запуска.
 
+Модели (Silero VAD и YAMNet в формате ONNX) лежат в репозитории, в `toystudio/engine/models`; скачивать ничего не нужно. Проверить контрольные суммы: `python tools/fetch_models.py --verify` (без `--verify` скрипт скачает модели заново).
+
 Тесты: `pytest` (сквозной тест `tests/app/test_flow_phase2.py` запускает настоящий анализ и требует ffmpeg 7+).

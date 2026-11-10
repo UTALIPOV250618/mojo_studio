@@ -4,12 +4,12 @@ import itertools
 from datetime import date
 from pathlib import Path
 
-import numpy as np
-
 from tests.jobs.worker_run import events, is_stage, kill_tree, run_raw, run_until, run_worker
 from tests.media_fixtures import (
+    APPLAUSE_WAV,
     make_clip,
     make_noise_clip,
+    make_toast_clip,
     make_truncated,
     make_wav_clip,
     needs_ffmpeg,
@@ -345,7 +345,6 @@ def test_unexpected_sync_error_marks_sync_failed_and_finishes(tmp_path: Path, mo
 # --- stage 2 (speech regions, audio events) and stage 5 (moments) ---
 
 SR = 16_000
-APPLAUSE_WAV = Path(__file__).resolve().parents[1] / "data" / "applause_cc0_16k.wav"
 MOMENT_KEYS = {
     "media_id",
     "moment_id",
@@ -359,16 +358,6 @@ MOMENT_KEYS = {
 }
 
 
-def _toast_clip(tmp_path: Path) -> Path:
-    """30 s of speech-like signal, then the real CC0 applause (10 s)."""
-    from tests.engine.test_vad import speechlike
-
-    speech = (speechlike(30) * 32767).astype(np.int16)
-    track = np.concatenate([speech, read_wav16(APPLAUSE_WAV)])
-    wav = write_wav16(tmp_path / "src" / "тост.wav", track)
-    return make_wav_clip(tmp_path / "src" / "тост.mp4", wav)
-
-
 def _applause_clip(tmp_path: Path) -> Path:
     return make_wav_clip(tmp_path / "src" / "кол чабуу.mp4", APPLAUSE_WAV)
 
@@ -380,7 +369,7 @@ def _found(msgs: list, media_id: int, stage: str) -> object:
 
 
 def test_analyze_finds_toast_and_applause(tmp_path: Path) -> None:
-    project = _project(tmp_path, _toast_clip(tmp_path))
+    project = _project(tmp_path, make_toast_clip(tmp_path))
     msgs: list = []
     s = run_worker("analyze", project, app_db=tmp_path / "app.db", msgs=msgs)
     try:

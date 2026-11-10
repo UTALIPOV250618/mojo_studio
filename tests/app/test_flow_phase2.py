@@ -5,7 +5,7 @@ import time
 import pytest
 from PySide6.QtCore import Qt
 
-from tests.media_fixtures import make_clip, needs_ffmpeg
+from tests.media_fixtures import make_clip, make_toast_clip, needs_ffmpeg
 from toystudio.app.main import app_paths
 from toystudio.app.shell import Shell
 from toystudio.core.models import StageName
@@ -32,8 +32,19 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _shell(qtbot, app_store, projects_dir) -> Shell:
-    w = Shell(app_store, projects_dir)
+class FakeNotifier:
+    def __init__(self) -> None:
+        self.shown: list[tuple[str, str]] = []
+
+    def notify(self, title, body, on_click):
+        self.shown.append((title, body))
+
+    def minimize_to_tray(self, window):
+        pass
+
+
+def _shell(qtbot, app_store, projects_dir, notifier=None) -> Shell:
+    w = Shell(app_store, projects_dir, notifier=notifier)
     w._ask_close = lambda: "stop"  # a failed test must not block on the close question
     qtbot.addWidget(w)
     w.show()
@@ -95,6 +106,37 @@ def test_new_project_to_finished_analysis(qtbot, home):
         assert card._badge.text() == "Анализ завершён"
         assert card._pixmap is not None and not card._pixmap.isNull()
         assert ProjectStore.peek(screen.vm.root).step == "analysis_done"
+    finally:
+        app_store.close()
+
+
+@needs_ffmpeg
+def test_analysis_finds_toast_and_applause(qtbot, home):
+    budget = Budget(FLOW_TIMEOUT_S)
+    projects_dir, app_db = app_paths()
+    clip = make_toast_clip(home)
+    app_store = AppStore(app_db)
+    notifier = FakeNotifier()
+    try:
+        w = _shell(qtbot, app_store, projects_dir, notifier)
+        _add_files_and_start(qtbot, w, [clip], budget)
+        screen = w.analysis_screen
+        assert screen is not None and w.current_screen() is screen
+        with qtbot.waitSignal(screen.vm.finished, timeout=budget.ms()):
+            pass
+        assert screen.vm.done
+        screen.flush_feed()
+
+        by_stage = {s.key: s.state for s in screen.vm.stages}
+        assert by_stage[StageName.SPEECH.value] == "done"
+        assert by_stage[StageName.MOMENTS.value] == "done"
+        types = [c.type_text() for c in screen.feed_cards()]
+        assert "Тост" in types and "Аплодисменты" in types, types
+        assert screen.vm.moment_total >= 2
+
+        assert len(notifier.shown) == 1
+        body = notifier.shown[0][1]
+        assert "найдено" in body and str(screen.vm.moment_total) in body, body
     finally:
         app_store.close()
 

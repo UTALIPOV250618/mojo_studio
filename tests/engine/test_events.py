@@ -5,7 +5,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tests.engine.test_vad import SR, noise, speechlike, write_wav
+from tests.engine.test_vad import SR, noise, write_wav
+from tests.media_fixtures import speechlike
 from toystudio.core.models import AudioEvent, AudioLabel
 from toystudio.engine.analysis.single_pass import Stopped
 from toystudio.engine.audio import events as ev

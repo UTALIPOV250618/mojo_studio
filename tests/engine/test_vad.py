@@ -1,4 +1,3 @@
-import math
 import tracemalloc
 import wave
 from pathlib import Path
@@ -6,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests.media_fixtures import speechlike
 from toystudio.engine.analysis.single_pass import Stopped
 from toystudio.engine.audio.vad import FRAME, detect_speech, regions_from_probs
 
@@ -26,40 +26,6 @@ def write_wav(path: Path, samples: np.ndarray) -> Path:
 def noise(seconds: float, db: float = -40.0, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     return (rng.standard_normal(int(seconds * SR)) * 10 ** (db / 20)).astype(np.float32)
-
-
-def speechlike(seconds: float, seed: int = 1) -> np.ndarray:
-    """Glottal pulse train (100-220 Hz) through switching formant resonators, 4 Hz syllables."""
-    rng = np.random.default_rng(seed)
-    n = int(seconds * SR)
-    t = np.arange(n) / SR
-    f0 = 160 + 50 * np.sin(2 * math.pi * 0.7 * t) + 10 * np.sin(2 * math.pi * 3.1 * t)
-    phase = np.cumsum(f0) / SR
-    # sawtooth-like glottal source: rich in harmonics
-    src = 2 * (phase % 1.0) - 1
-    src = np.diff(src, prepend=src[0])
-    vowels = [(730, 1090, 2440), (270, 2290, 3010), (300, 870, 2240), (530, 1840, 2480)]
-    out = np.zeros(n, dtype=np.float64)
-    seg = int(0.15 * SR)
-    for i in range(0, n, seg):
-        formants = vowels[int(rng.integers(0, len(vowels)))]
-        chunk = src[i : i + seg].astype(np.float64)
-        acc = np.zeros_like(chunk)
-        for f in formants:
-            r = math.exp(-math.pi * 90 / SR)
-            a1, a2 = -2 * r * math.cos(2 * math.pi * f / SR), r * r
-            y = np.zeros_like(chunk)
-            y1 = y2 = 0.0
-            for k in range(len(chunk)):
-                yk = chunk[k] - a1 * y1 - a2 * y2
-                y[k] = yk
-                y2, y1 = y1, yk
-            acc += y / (1 + f / 1000)
-        out[i : i + seg] = acc
-    env = 0.5 * (1 + np.sin(2 * math.pi * 4 * t - math.pi / 2)) ** 0.5
-    sig = out * env
-    sig = sig / np.max(np.abs(sig)) * 0.5
-    return (sig + 0.003 * rng.standard_normal(n)).astype(np.float32)
 
 
 def on_off(on: int, off: int) -> list[float]:

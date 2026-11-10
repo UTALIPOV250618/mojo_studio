@@ -1,5 +1,6 @@
 """Synthetic media helpers for tests (lavfi test pattern + sine tone or noise bursts)."""
 
+import math
 import re
 import shutil
 import subprocess
@@ -155,3 +156,48 @@ def make_wav_clip(path: Path, wav: Path, *, size: str = "320x180", fps: int = 25
         check=True, capture_output=True,
     )  # fmt: skip
     return path
+
+
+def speechlike(seconds: float, seed: int = 1) -> np.ndarray:
+    """Glottal pulse train (100-220 Hz) through switching formant resonators, 4 Hz syllables."""
+    rng = np.random.default_rng(seed)
+    n = int(seconds * 16_000)
+    t = np.arange(n) / 16_000
+    f0 = 160 + 50 * np.sin(2 * math.pi * 0.7 * t) + 10 * np.sin(2 * math.pi * 3.1 * t)
+    phase = np.cumsum(f0) / 16_000
+    # sawtooth-like glottal source: rich in harmonics
+    src = 2 * (phase % 1.0) - 1
+    src = np.diff(src, prepend=src[0])
+    vowels = [(730, 1090, 2440), (270, 2290, 3010), (300, 870, 2240), (530, 1840, 2480)]
+    out = np.zeros(n, dtype=np.float64)
+    seg = int(0.15 * 16_000)
+    for i in range(0, n, seg):
+        formants = vowels[int(rng.integers(0, len(vowels)))]
+        chunk = src[i : i + seg].astype(np.float64)
+        acc = np.zeros_like(chunk)
+        for f in formants:
+            r = math.exp(-math.pi * 90 / 16_000)
+            a1, a2 = -2 * r * math.cos(2 * math.pi * f / 16_000), r * r
+            y = np.zeros_like(chunk)
+            y1 = y2 = 0.0
+            for k in range(len(chunk)):
+                yk = chunk[k] - a1 * y1 - a2 * y2
+                y[k] = yk
+                y2, y1 = y1, yk
+            acc += y / (1 + f / 1000)
+        out[i : i + seg] = acc
+    env = 0.5 * (1 + np.sin(2 * math.pi * 4 * t - math.pi / 2)) ** 0.5
+    sig = out * env
+    sig = sig / np.max(np.abs(sig)) * 0.5
+    return (sig + 0.003 * rng.standard_normal(n)).astype(np.float32)
+
+
+APPLAUSE_WAV = Path(__file__).resolve().parent / "data" / "applause_cc0_16k.wav"
+
+
+def make_toast_clip(tmp_path: Path) -> Path:
+    """30 s of speech-like signal, then the real CC0 applause (10 s)."""
+    speech = (speechlike(30) * 32767).astype(np.int16)
+    track = np.concatenate([speech, read_wav16(APPLAUSE_WAV)])
+    wav = write_wav16(tmp_path / "src" / "тост.wav", track)
+    return make_wav_clip(tmp_path / "src" / "тост.mp4", wav)

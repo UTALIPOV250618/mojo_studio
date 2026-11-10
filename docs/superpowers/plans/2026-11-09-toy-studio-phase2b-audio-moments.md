@@ -179,7 +179,7 @@
 ### Task 8: Сквозной тест и документы
 
 **Files:**
-- Modify: `tests/app/test_flow_phase2.py`, `docs/architecture.md` (§5.1 этап 2: «распознавание текста — фаза 2в»; §11 лицензии onnxruntime, Silero, YAMNet; §13 строка фазы 2), `docs/testing/phase2a-test-guide.md` → `phase2-test-guide.md` (раздел про ленту моментов), `README.md` (модели и `fetch_models.py`)
+- Modify: `tests/app/test_flow_phase2.py`, `docs/architecture.md` (§5.1 этап 2: «распознавание текста — фаза 2в»; §11 лицензии onnxruntime, Silero, YAMNet; §13 строка фазы 2), `docs/testing/phase2-test-guide.md` → `phase2-test-guide.md` (раздел про ленту моментов), `README.md` (модели и `fetch_models.py`)
 
 - [ ] **Step 1:** Сквозной тест: проект из клипа с тостоподобной речью и аплодисментами → после анализа лента содержит тост и аплодисменты, уведомление с числом моментов, этапы 2 и 5 `done`.
 - [ ] **Step 2:** Весь `pytest`, `ruff`, `mypy`, `lint-imports` — PASS.
