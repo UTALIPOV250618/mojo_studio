@@ -14,10 +14,14 @@ from toystudio.app.i18n import current_language
 from toystudio.core.format import format_eta
 from toystudio.core.models import (
     US_PER_S,
+    Mark,
     MediaKind,
     MediaRow,
     MediaStatus,
+    MomentRow,
+    MomentType,
     QualityLabel,
+    Reason,
     StageName,
     StageRun,
     StageState,
@@ -37,13 +41,13 @@ _FINISHED = (StageState.DONE, StageState.SKIPPED)
 _SYNC_FINISHED = (*_FINISHED, StageState.FAILED)  # a failed camera sync does not block the result
 _ENDED_BY_USER = ("stopped", "cancelled")
 
-# key -> (stages of every file, includes project-level SYNC); None = arrives in phase 2b
-_UI_STAGES: tuple[tuple[str, tuple[StageName, ...] | None, bool], ...] = (
+# key -> (stages of every file, includes project-level SYNC)
+_UI_STAGES: tuple[tuple[str, tuple[StageName, ...], bool], ...] = (
     ("prepare", (StageName.PROBE, StageName.PROXY), False),
-    ("speech", None, False),
+    ("speech", (StageName.SPEECH,), False),
     ("scenes", (StageName.SCENES,), True),
     ("quality", (StageName.QUALITY,), False),
-    ("moments", None, False),
+    ("moments", (StageName.MOMENTS,), False),
 )
 
 
@@ -56,6 +60,33 @@ class StageView:
     percent: float | None  # 0..1, only meaningful while running
 
 
+@dataclass(frozen=True)
+class FeedItem:
+    """One moment of the «Уже найдено» feed; the preview path is relative to the project root."""
+
+    id: int
+    type: MomentType
+    start_us: int
+    duration_us: int
+    quality: QualityLabel
+    preview: str | None
+    reasons: tuple[Reason, ...]
+    mark: Mark
+
+
+def _item(m: MomentRow) -> FeedItem:
+    return FeedItem(
+        m.id,
+        m.type,
+        m.start_us,
+        m.end_us - m.start_us,
+        m.quality_label,
+        m.preview,
+        m.reasons,
+        m.mark,
+    )
+
+
 @dataclass
 class _Snapshot:
     name: str = ""
@@ -63,6 +94,8 @@ class _Snapshot:
     missing: list[MediaRow] = field(default_factory=list)  # source gone (drive unplugged)
     runs: dict[tuple[int, StageName], StageRun] = field(default_factory=dict)
     scene_cuts: int = 0
+    speech_regions: int = 0
+    moment_counts: dict[MomentType, int] = field(default_factory=dict)
     labels: list[QualityLabel] = field(default_factory=list)
     step_done: bool = False
 
@@ -114,11 +147,14 @@ class AnalysisVM(QObject):
         self.failed_retryable = False  # False: every failure is a corrupt file to replace
         self.missing_files: list[str] = []
         self.all_failed = False
+        self.feed: list[FeedItem] = []  # newest first, never capped here
+        self.feed_version = 0  # bumped whenever the feed changes
         jobs.progress.connect(self._on_progress)
         jobs.event.connect(self._on_event)
         jobs.finished.connect(self._on_finished)
         jobs.failed.connect(self._on_failed)
         self._reload()
+        self._reload_feed()
         self._compute()
 
     # ---- state for the screen
@@ -152,6 +188,27 @@ class AnalysisVM(QObject):
     def scene_cuts(self) -> int:
         return self._snap.scene_cuts
 
+    @property
+    def moment_total(self) -> int:
+        """Moments of the files that analysed fine."""
+        return sum(self._snap.moment_counts.values())
+
+    def finish_text(self) -> str:
+        """Notification body: the project is ready, with the number of moments when any."""
+        name = self._snap.name
+        n = self.moment_total
+        if n == 0:
+            return QCoreApplication.translate("AnalysisScreen", "Анализ «%1» готов").replace(
+                "%1", name
+            )
+        found = _plural(
+            n,
+            QT_TRANSLATE_NOOP("AnalysisVM", "Анализ «%2» готов — найден %1 момент"),
+            QT_TRANSLATE_NOOP("AnalysisVM", "Анализ «%2» готов — найдено %1 момента"),
+            QT_TRANSLATE_NOOP("AnalysisVM", "Анализ «%2» готов — найдено %1 моментов"),
+        )
+        return found.replace("%2", name)
+
     # ---- commands
     def stop(self) -> None:
         if not self._active or self._stopping:
@@ -183,6 +240,7 @@ class AnalysisVM(QObject):
         self._live.clear()
         self._set_status("analysis")
         self._reload()
+        self._reload_feed()
         self._compute()
         self.changed.emit()
 
@@ -213,9 +271,15 @@ class AnalysisVM(QObject):
         if kind == "eta":
             self._remaining_s = float(payload.get("remaining_s", 0.0))
         elif kind == "stage":
-            if str(payload.get("stage")) == StageName.PROXY.value:
+            stage = str(payload.get("stage"))
+            if stage == StageName.PROXY.value:
                 self._live.pop(int(payload.get("media_id", 0)), None)
             self._reload()
+            if stage == StageName.MOMENTS.value and str(payload.get("state")) == "done":
+                self._reload_feed()  # the store is the truth; events only keep the feed live
+        elif kind == "moment":
+            if not self._add_moment(payload):
+                return
         else:
             return
         self._compute()
@@ -242,6 +306,7 @@ class AnalysisVM(QObject):
         self._remaining_s = None
         self._live.clear()
         self._reload()
+        self._reload_feed()
         # a missing file keeps the card on "analysis" until its drive is back
         self._set_status("analysis_done" if self.done else "analysis")
         self._compute()
@@ -280,6 +345,8 @@ class AnalysisVM(QObject):
                 m for m in store.list_media(MediaKind.VIDEO) if m.status is MediaStatus.MISSING
             ]
             snap.scene_cuts = store.scene_cut_count()
+            snap.speech_regions = sum(len(store.speech_regions(m.id)) for m in snap.files)
+            snap.moment_counts = store.moment_counts()
             for m in snap.files:
                 run = snap.runs.get((m.id, StageName.QUALITY))
                 if run is not None and run.state in _FINISHED and m.info is not None:
@@ -292,6 +359,62 @@ class AnalysisVM(QObject):
             return
         finally:
             store.close()
+
+    def _reload_feed(self) -> None:
+        try:
+            store = ProjectStore.open_readonly(self.root)
+        except (OSError, sqlite3.Error):
+            return
+        try:
+            rows = store.moments()
+        except sqlite3.Error:
+            return
+        finally:
+            store.close()
+        self._set_feed([_item(m) for m in sorted(rows, key=lambda m: m.id, reverse=True)])
+
+    def _set_feed(self, feed: list[FeedItem]) -> None:
+        if feed != self.feed:
+            self.feed = feed
+            self.feed_version += 1
+
+    def _add_moment(self, payload: dict[str, object]) -> bool:
+        """Put a just-found moment on top of the feed; False when it is already there."""
+        try:
+            mid = int(payload["moment_id"])  # type: ignore[call-overload]
+            item = FeedItem(
+                mid,
+                MomentType(str(payload["type"])),
+                int(payload["start_us"]),  # type: ignore[call-overload]
+                int(payload["end_us"]) - int(payload["start_us"]),  # type: ignore[call-overload]
+                QualityLabel.CLEAR,
+                str(payload["preview"]) if payload.get("preview") else None,
+                (),
+                Mark.NONE,
+            )
+        except (KeyError, ValueError, TypeError):
+            return False
+        if any(f.id == mid for f in self.feed):
+            return False
+        item = self._stored(item, payload.get("media_id")) or item
+        self._set_feed([item, *self.feed])
+        return True
+
+    def _stored(self, item: FeedItem, media_id: object) -> FeedItem | None:
+        """The stored row has what the event does not carry (reasons, frame quality)."""
+        try:
+            store = ProjectStore.open_readonly(self.root)
+        except (OSError, sqlite3.Error):
+            return None
+        try:
+            for m in store.moments(int(media_id)):  # type: ignore[call-overload]
+                if m.id == item.id:
+                    return _item(m)
+        except (sqlite3.Error, ValueError, TypeError):
+            pass
+        finally:
+            store.close()
+        return None
 
     # ---- derived state
     def _run_state(self, mid: int, stage: StageName) -> StageState:
@@ -382,9 +505,6 @@ class AnalysisVM(QObject):
         views: list[StageView] = []
         for key, names, with_sync in _UI_STAGES:
             title = self._title(key)
-            if names is None:
-                views.append(StageView(key, title, "later", None, None))
-                continue
             state = self._ui_state(names, with_sync)
             found = self._found(key) if state == "done" else None
             percent = self._fraction(names) if state == "running" else None
@@ -417,7 +537,25 @@ class AnalysisVM(QObject):
             )
         if key == "quality":
             return self._quality_text()
-        return None
+        if key == "speech":
+            return _plural(
+                snap.speech_regions,
+                QT_TRANSLATE_NOOP("AnalysisVM", "Найден %1 участок речи"),
+                QT_TRANSLATE_NOOP("AnalysisVM", "Найдено %1 участка речи"),
+                QT_TRANSLATE_NOOP("AnalysisVM", "Найдено %1 участков речи"),
+            )
+        return self._moments_text()
+
+    def _moments_text(self) -> str:
+        parts = []
+        for kind, forms in _MOMENT_FORMS.items():
+            n = self._snap.moment_counts.get(kind, 0)
+            if n:
+                parts.append(_plural(n, *forms))
+        if not parts:
+            return QCoreApplication.translate("AnalysisVM", "Моментов не найдено")
+        found = QCoreApplication.translate("AnalysisVM", "Найдено %1")
+        return found.replace("%1", " · ".join(parts))
 
     def _quality_text(self) -> str:
         labels = self._snap.labels
@@ -443,6 +581,38 @@ _TITLES = {
     "scenes": QT_TRANSLATE_NOOP("AnalysisVM", "Находим смены сцен"),
     "quality": QT_TRANSLATE_NOOP("AnalysisVM", "Убираем размытые и тёмные кадры"),
     "moments": QT_TRANSLATE_NOOP("AnalysisVM", "Ищем танцы, аплодисменты, музыку"),
+}
+_MOMENT_FORMS: dict[MomentType, tuple[str, str, str]] = {
+    MomentType.TOAST: (
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 тост"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 тоста"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 тостов"),
+    ),
+    MomentType.DANCE: (
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 танец"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 танца"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 танцев"),
+    ),
+    MomentType.ENTRANCE: (
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 выход молодых"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 выхода молодых"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 выходов молодых"),
+    ),
+    MomentType.GIFTS: (
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 подарок"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 подарка"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 подарков"),
+    ),
+    MomentType.APPLAUSE: (
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 аплодисмент"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 аплодисмента"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 аплодисментов"),
+    ),
+    MomentType.MUSIC: (
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 музыка"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 музыки"),
+        QT_TRANSLATE_NOOP("AnalysisVM", "%1 музык"),
+    ),
 }
 _BAD_LABELS = (
     (QualityLabel.DARK, QT_TRANSLATE_NOOP("AnalysisVM", "темновато")),

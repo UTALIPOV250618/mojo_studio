@@ -225,3 +225,25 @@ QLabel#ProjectDuration {
     border-radius: {{radius-sm}};
     padding: 2px {{space-1}};
 }
+
+/* MomentCard */
+QFrame#MomentCard {
+    background: {{bg-200}};
+    border: 1px solid {{line-100}};
+    border-radius: {{radius-lg}};
+}
+QFrame#MomentCard[mark="must"] {
+    background: {{garnet-tint}};
+    border: 1px solid {{garnet-500}};
+}
+QLabel#MomentPreview {
+    background: {{player-bg}};
+    border-radius: {{radius-sm}};
+}
+QLabel#MomentTypeBadge {
+    background: {{bg-300}};
+    border-radius: {{radius-sm}};
+    padding: 2px {{space-2}};
+}
+QLabel#MomentMark { color: {{ink-muted}}; }
+QLabel#MomentMark[mark="must"] { color: {{gold-400}}; }

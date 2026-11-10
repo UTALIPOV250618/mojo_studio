@@ -260,12 +260,9 @@ class Shell(QMainWindow):
     def _on_analysis_finished(self, vm: AnalysisVM) -> None:
         if self._closing or not vm.notify_when_done or vm.all_failed or vm.missing_files:
             return  # nothing to celebrate yet: screen 3 lists what went wrong
-        body = QCoreApplication.translate("AnalysisScreen", "Анализ «%1» готов").replace(
-            "%1", vm.project_name
-        )
         self.notifier.notify(
             QCoreApplication.translate("AnalysisScreen", "Той Студия"),
-            body,
+            vm.finish_text(),
             lambda r=vm.root: self._open_from_notification(r),
         )
 

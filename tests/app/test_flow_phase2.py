@@ -85,8 +85,7 @@ def test_new_project_to_finished_analysis(qtbot, home):
         with qtbot.waitSignal(screen.vm.finished, timeout=budget.ms()):
             pass
         assert screen.vm.done
-        assert {v.state for v in screen.vm.stages} <= {"done", "later"}
-        assert [v.state for v in screen.vm.stages].count("done") == 3
+        assert [v.state for v in screen.vm.stages] == ["done"] * 5
         assert screen.done_label.isVisible()
 
         w.top_bar.click_projects()

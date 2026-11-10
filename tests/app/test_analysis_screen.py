@@ -11,8 +11,12 @@ from toystudio.core.models import (
     MediaInfo,
     MediaKind,
     MediaStatus,
+    MomentRow,
+    MomentType,
     QualityInterval,
     QualityLabel,
+    Reason,
+    SpeechRegion,
     StageName,
     StageState,
     ToiKind,
@@ -142,7 +146,7 @@ def emit_stage(jobs, project, mid, stage, state, found=None):
     )
 
 
-def test_stage_texts_and_later_states(qtbot, project, jobs, app_store):
+def test_stage_texts_and_waiting_states(qtbot, project, jobs, app_store):
     apply_theme(QApplication.instance(), "dark")
     vm = make_vm(project, jobs, app_store)
     screen = AnalysisScreen(vm, notifier=FakeNotifier())
@@ -155,11 +159,9 @@ def test_stage_texts_and_later_states(qtbot, project, jobs, app_store):
         "Убираем размытые и тёмные кадры",
         "Ищем танцы, аплодисменты, музыку",
     ]
-    assert vm.stages[1].state == "later"
-    assert vm.stages[4].state == "later"
-    assert vm.stages[0].state == "waiting"
-    assert screen.stage_widgets[1].found_label.text() == "Появится позже"
-    assert screen.stage_widgets[4].found_label.text() == "Появится позже"
+    assert [s.state for s in vm.stages] == ["waiting"] * 5  # speech and moments are real stages
+    assert screen.stage_widgets[1].found_label.isHidden()
+    assert screen.stage_widgets[4].found_label.isHidden()
 
 
 def test_found_texts_after_stages_done(qtbot, project, jobs, app_store):
@@ -175,7 +177,7 @@ def test_found_texts_after_stages_done(qtbot, project, jobs, app_store):
     assert texts[0] == "Готово: 2 файла"
     assert texts[2] == "Найдено 4 смены сцен"
     assert texts[3] == "Чётко: 1 файл · темновато: 1"
-    assert [s.state for s in vm.stages] == ["done", "later", "done", "done", "later"]
+    assert [s.state for s in vm.stages] == ["done", "waiting", "done", "done", "waiting"]
 
 
 def test_progress_events_update_overall_and_eta(qtbot, project, jobs, app_store):
@@ -514,3 +516,189 @@ def test_tray_menu_open_and_quit(qtbot):
     assert w.isVisible()
     n.quit_action.trigger()
     assert not w.isVisible()
+
+
+# ---- phase 2b: moment feed, stage texts
+def _row(mid, kind=MomentType.TOAST, start=10, quality=QualityLabel.CLEAR):
+    return MomentRow(
+        0,
+        mid,
+        kind,
+        start * 1_000_000,
+        (start + 20) * 1_000_000,
+        0.9,
+        quality,
+        (Reason("toast", "Звучит тост", "Тост угулду"),),
+    )
+
+
+def _store_moments(project, rows_by_media, with_previews=True):
+    """Write moments (and preview files) the way the worker does; returns ids in order."""
+    root, store, _ = project
+    out = []
+    for mid, rows in rows_by_media:
+        ids = store.replace_moments(mid, rows)
+        pairs = []
+        for i in ids:
+            rel = f"cache/thumbs/m{i}.jpg"
+            if with_previews:
+                from PySide6.QtGui import QImage
+
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                img = QImage(32, 18, QImage.Format.Format_RGB32)
+                img.fill(0x336699)
+                img.save(str(root / rel))
+            pairs.append((i, rel))
+        store.set_previews(pairs)
+        out.extend(ids)
+    return out
+
+
+def _emit_moment(jobs, project, mid, moment_id, kind="toast", start=10):
+    jobs.event.emit(
+        job_id(project),
+        Event(
+            "moment",
+            {
+                "media_id": mid,
+                "moment_id": moment_id,
+                "type": kind,
+                "start_us": start * 1_000_000,
+                "end_us": (start + 20) * 1_000_000,
+                "score": 0.9,
+                "preview": f"cache/thumbs/m{moment_id}.jpg",
+            },
+        ),
+    )
+
+
+def test_feed_adds_cards_from_events_newest_first(qtbot, project, jobs, app_store):
+    _root, _store, ids = project
+    vm = make_vm(project, jobs, app_store)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    assert screen.feed_cards() == []
+    assert screen.found_empty.isVisible() or not screen.found_empty.isHidden()
+    mids = _store_moments(
+        project,
+        [(ids[0], [_row(ids[0], start=10), _row(ids[0], MomentType.DANCE, start=100)])],
+    )
+    _emit_moment(jobs, project, ids[0], mids[0])
+    _emit_moment(jobs, project, ids[0], mids[1], "dance", 100)
+    _emit_moment(jobs, project, ids[0], mids[1], "dance", 100)  # duplicate event
+    cards = screen.feed_cards()
+    assert [c.type_text() for c in cards] == ["Танец", "Тост"]
+    assert cards[0].has_preview()
+    assert cards[1].reason_text() == "Звучит тост"
+    assert screen.found_empty.isHidden()
+
+
+def test_feed_caps_at_50(qtbot, project, jobs, app_store):
+    _root, _store, ids = project
+    vm = make_vm(project, jobs, app_store)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    rows = [_row(ids[0], start=i * 30) for i in range(53)]
+    mids = _store_moments(project, [(ids[0], rows)])
+    for i, m in enumerate(mids):
+        _emit_moment(jobs, project, ids[0], m, start=i * 30)
+    assert len(screen.feed_cards()) == 50
+    assert screen.more_text() == "и ещё 3"
+    _emit_moment(jobs, project, ids[0], mids[-1] + 1)
+    assert screen.more_text() == "и ещё 4"
+
+
+def test_feed_loaded_from_store_on_reopen(qtbot, project, jobs, app_store):
+    _root, _store, ids = project
+    mids = _store_moments(
+        project,
+        [(ids[0], [_row(ids[0], start=10)]), (ids[1], [_row(ids[1], MomentType.MUSIC, 5)])],
+    )
+    vm = make_vm(project, jobs, app_store, running=False)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    assert [c.type_text() for c in screen.feed_cards()] == ["Музыка", "Тост"]
+    assert mids[0] < mids[1]
+    assert screen.more_text() == ""
+
+
+def test_feed_reloads_on_moments_stage_done(qtbot, project, jobs, app_store):
+    _root, _store, ids = project
+    vm = make_vm(project, jobs, app_store)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    mids = _store_moments(project, [(ids[0], [_row(ids[0]), _row(ids[0], start=90)])])
+    _emit_moment(jobs, project, ids[0], mids[1], start=90)  # the first event was lost
+    assert len(screen.feed_cards()) == 1
+    emit_stage(jobs, project, ids[0], StageName.MOMENTS, StageState.DONE)
+    assert len(screen.feed_cards()) == 2
+
+
+def test_feed_missing_preview_shows_placeholder(qtbot, project, jobs, app_store):
+    _root, _store, ids = project
+    _store_moments(project, [(ids[0], [_row(ids[0])])], with_previews=False)
+    vm = make_vm(project, jobs, app_store, running=False)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    (card,) = screen.feed_cards()
+    assert not card.has_preview()
+
+
+def test_stage_texts_use_counts(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    for st in (StageName.SPEECH, StageName.MOMENTS):
+        finish_stage(store, ids, st)
+    store.replace_audio(ids[0], [SpeechRegion(0, 1_000_000, 0.9)] * 12, [])
+    rows0 = [_row(ids[0], start=i * 30) for i in range(14)]
+    rows0 += [_row(ids[0], MomentType.DANCE, 500 + i * 30) for i in range(9)]
+    rows1 = [_row(ids[1], MomentType.MUSIC, 5)]
+    _store_moments(project, [(ids[0], rows0), (ids[1], rows1)])
+    vm = make_vm(project, jobs, app_store)
+    assert vm.stages[1].state == "done"
+    assert vm.stages[1].found_text == "Найдено 12 участков речи"
+    assert vm.stages[4].found_text == "Найдено 14 тостов · 9 танцев · 1 музыка"
+    store.replace_audio(ids[0], [SpeechRegion(0, 1_000_000, 0.9)] * 21, [])
+    vm._reload()
+    vm._compute()
+    assert vm.stages[1].found_text == "Найден 21 участок речи"
+
+
+def test_notification_mentions_moments(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    for st in StageName:
+        if st is not StageName.SYNC:
+            finish_stage(store, ids, st)
+    store.set_stage(0, StageName.SYNC, StageState.DONE)
+    _store_moments(project, [(ids[0], [_row(ids[0]), _row(ids[0], start=90)])])
+    vm = make_vm(project, jobs, app_store, running=False)
+    assert vm.finish_text() == "Анализ «Свадьба Айбек и Нурайым» готов — найдено 2 момента"
+    _store_moments(project, [(ids[1], [_row(ids[1], start=i * 30) for i in range(3)])])
+    vm._reload()
+    assert vm.finish_text().endswith("найдено 5 моментов")
+    store.replace_moments(ids[0], [])
+    store.replace_moments(ids[1], [_row(ids[1])])
+    vm._reload()
+    assert vm.finish_text().endswith("найден 1 момент")
+    store.replace_moments(ids[1], [])
+    vm._reload()
+    assert vm.finish_text() == "Анализ «Свадьба Айбек и Нурайым» готов"
+
+
+def test_feed_retranslates_to_ky(qtbot, qapp, project, jobs, app_store):
+    from toystudio.app.i18n import install_language
+
+    _root, _store, ids = project
+    _store_moments(project, [(ids[0], [_row(ids[0], MomentType.DANCE)])])
+    vm = make_vm(project, jobs, app_store, running=False)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    assert install_language(qapp, "ky")
+    qapp.processEvents()
+    try:
+        (card,) = screen.feed_cards()
+        assert card.type_text() != "Танец"
+        assert card.reason_text() == "Тост угулду"
+    finally:
+        install_language(qapp, "ru")
+    qapp.processEvents()
+    assert screen.feed_cards()[0].reason_text() == "Звучит тост"

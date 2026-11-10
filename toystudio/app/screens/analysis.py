@@ -6,7 +6,8 @@ analyses alive and drives the project card, the taskbar and the finish notificat
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -14,17 +15,22 @@ from PySide6.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
+from toystudio.app.i18n import current_language
 from toystudio.app.platform.notify import Notifier
 from toystudio.app.theme.apply import set_variant, token
-from toystudio.app.viewmodels.analysis_vm import AnalysisVM
+from toystudio.app.viewmodels.analysis_vm import AnalysisVM, FeedItem
 from toystudio.app.widgets.analysis_stage import AnalysisStage
 from toystudio.app.widgets.banner import Banner
 from toystudio.app.widgets.empty_state import EmptyState
 from toystudio.app.widgets.icons import icon
+from toystudio.app.widgets.moment_card import MomentCard
+
+FEED_LIMIT = 50  # cards shown; the rest is a single «и ещё N» line
 
 
 class AnalysisScreen(QWidget):
@@ -102,13 +108,27 @@ class AnalysisScreen(QWidget):
         left.addStretch(1)
         columns.addLayout(left, 60)
 
-        # ---- right: found so far (moments arrive in phase 2b)
+        # ---- right: found so far, newest moment on top
         right = QVBoxLayout()
         self._found_title = QLabel()
         self._found_title.setProperty("role", "heading")
         self.found_empty = EmptyState("film", "", "", None)
+        self._feed_box = QVBoxLayout()
+        self._feed_box.setSpacing(8)
+        self._feed_box.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._more_label = QLabel()
+        self._more_label.setProperty("role", "caption")
+        self._more_label.setProperty("tone", "muted")
+        feed_body = QWidget()
+        feed_body.setLayout(self._feed_box)
+        self._feed_scroll = QScrollArea()
+        self._feed_scroll.setWidgetResizable(True)
+        self._feed_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._feed_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._feed_scroll.setWidget(feed_body)
         right.addWidget(self._found_title)
         right.addWidget(self.found_empty, 1)
+        right.addWidget(self._feed_scroll, 1)
         columns.addLayout(right, 40)
         root.addLayout(columns, 1)
 
@@ -139,6 +159,8 @@ class AnalysisScreen(QWidget):
         vm.finished.connect(self._on_finished)
         vm.failed.connect(self._on_failed)
         self._failure: tuple[str, str] | None = None
+        self._cards: list[MomentCard] = []
+        self._feed_shown: int | None = None  # feed_version on screen
         self.retranslate()
 
     # ---- vm -> widgets
@@ -182,6 +204,53 @@ class AnalysisScreen(QWidget):
             )
         )
         self._render_banner()
+        self._render_feed()
+
+    def _render_feed(self, force: bool = False) -> None:
+        vm = self.vm
+        has = bool(vm.feed)
+        self.found_empty.setVisible(not has)
+        self._feed_scroll.setVisible(has)
+        if not force and self._feed_shown == vm.feed_version:
+            return
+        self._feed_shown = vm.feed_version
+        for card in self._cards:
+            self._feed_box.removeWidget(card)
+            card.deleteLater()
+        self._cards = []
+        for item in vm.feed[:FEED_LIMIT]:
+            card = MomentCard()
+            self._fill_card(card, item)
+            self._feed_box.addWidget(card)
+            self._cards.append(card)
+        self._feed_box.removeWidget(self._more_label)
+        self._feed_box.addWidget(self._more_label)
+        self._more_label.setText(self._more_text(len(vm.feed) - FEED_LIMIT))
+        self._more_label.setVisible(len(vm.feed) > FEED_LIMIT)
+
+    def _fill_card(self, card: MomentCard, item: FeedItem) -> None:
+        pixmap: QPixmap | None = None
+        if item.preview:
+            loaded = QPixmap(str(self.vm.root / item.preview))
+            pixmap = None if loaded.isNull() else loaded  # a lost file is just a placeholder
+        ky = current_language() == "ky"
+        reasons = [r.ky if ky else r.ru for r in item.reasons]
+        card.set_data(
+            item.type, item.start_us, item.duration_us, item.quality, pixmap, reasons, item.mark
+        )
+
+    @staticmethod
+    def _more_text(n: int) -> str:
+        return QCoreApplication.translate("AnalysisScreen", "и ещё %1").replace(
+            "%1", str(max(n, 0))
+        )
+
+    # ---- queries (tests)
+    def feed_cards(self) -> list[MomentCard]:
+        return list(self._cards)
+
+    def more_text(self) -> str:
+        return self._more_label.text() if not self._more_label.isHidden() else ""
 
     def _render_banner(self) -> None:
         vm = self.vm
@@ -251,6 +320,7 @@ class AnalysisScreen(QWidget):
         )
         self.done_label.setText(QCoreApplication.translate("AnalysisScreen", "Анализ завершён"))
         self._render()
+        self._render_feed(force=True)  # reasons depend on the language
 
     def changeEvent(self, e: QEvent) -> None:
         if e.type() == QEvent.Type.LanguageChange:
