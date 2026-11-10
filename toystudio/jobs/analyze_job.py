@@ -274,7 +274,9 @@ class _Run:
         for mid, m, preview in zip(ids, found, previews, strict=True):
             payload = {"media_id": row.id, "moment_id": mid, "type": m.type.value,
                        "start_us": m.start_us, "end_us": m.end_us, "score": m.score,
-                       "preview": preview}  # fmt: skip
+                       "preview": preview,
+                       "quality_label": m.quality_label.value,
+                       "reasons": [{"code": r.code, "ru": r.ru, "ky": r.ky} for r in m.reasons]}  # fmt: skip
             self.ctx.report(Event("moment", payload))
         self.finish(row.id, StageName.MOMENTS, StageState.DONE, found=len(found))
 

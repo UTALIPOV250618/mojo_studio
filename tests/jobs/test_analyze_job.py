@@ -346,7 +346,17 @@ def test_unexpected_sync_error_marks_sync_failed_and_finishes(tmp_path: Path, mo
 
 SR = 16_000
 APPLAUSE_WAV = Path(__file__).resolve().parents[1] / "data" / "applause_cc0_16k.wav"
-MOMENT_KEYS = {"media_id", "moment_id", "type", "start_us", "end_us", "score", "preview"}
+MOMENT_KEYS = {
+    "media_id",
+    "moment_id",
+    "type",
+    "start_us",
+    "end_us",
+    "score",
+    "preview",
+    "quality_label",
+    "reasons",
+}
 
 
 def _toast_clip(tmp_path: Path) -> Path:

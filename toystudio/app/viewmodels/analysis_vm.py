@@ -149,6 +149,8 @@ class AnalysisVM(QObject):
         self.all_failed = False
         self.feed: list[FeedItem] = []  # newest first, never capped here
         self.feed_version = 0  # bumped whenever the feed changes
+        self.feed_epoch = 0  # bumped when the feed is replaced (not just prepended to)
+        self._feed_ids: set[int] = set()
         jobs.progress.connect(self._on_progress)
         jobs.event.connect(self._on_event)
         jobs.finished.connect(self._on_finished)
@@ -376,45 +378,36 @@ class AnalysisVM(QObject):
     def _set_feed(self, feed: list[FeedItem]) -> None:
         if feed != self.feed:
             self.feed = feed
+            self._feed_ids = {f.id for f in feed}
             self.feed_version += 1
+            self.feed_epoch += 1
 
     def _add_moment(self, payload: dict[str, object]) -> bool:
         """Put a just-found moment on top of the feed; False when it is already there."""
         try:
             mid = int(payload["moment_id"])  # type: ignore[call-overload]
+            if mid in self._feed_ids:
+                return False
+            reasons = tuple(
+                Reason(str(r["code"]), str(r["ru"]), str(r["ky"]))
+                for r in payload.get("reasons", [])  # type: ignore[attr-defined]
+            )
             item = FeedItem(
                 mid,
                 MomentType(str(payload["type"])),
                 int(payload["start_us"]),  # type: ignore[call-overload]
                 int(payload["end_us"]) - int(payload["start_us"]),  # type: ignore[call-overload]
-                QualityLabel.CLEAR,
+                QualityLabel(str(payload.get("quality_label", QualityLabel.CLEAR.value))),
                 str(payload["preview"]) if payload.get("preview") else None,
-                (),
+                reasons,
                 Mark.NONE,
             )
         except (KeyError, ValueError, TypeError):
             return False
-        if any(f.id == mid for f in self.feed):
-            return False
-        item = self._stored(item, payload.get("media_id")) or item
-        self._set_feed([item, *self.feed])
+        self.feed.insert(0, item)  # O(n) memmove only; no store, no list rebuild
+        self._feed_ids.add(mid)
+        self.feed_version += 1
         return True
-
-    def _stored(self, item: FeedItem, media_id: object) -> FeedItem | None:
-        """The stored row has what the event does not carry (reasons, frame quality)."""
-        try:
-            store = ProjectStore.open_readonly(self.root)
-        except (OSError, sqlite3.Error):
-            return None
-        try:
-            for m in store.moments(int(media_id)):  # type: ignore[call-overload]
-                if m.id == item.id:
-                    return _item(m)
-        except (sqlite3.Error, ValueError, TypeError):
-            pass
-        finally:
-            store.close()
-        return None
 
     # ---- derived state
     def _run_state(self, mid: int, stage: StageName) -> StageState:

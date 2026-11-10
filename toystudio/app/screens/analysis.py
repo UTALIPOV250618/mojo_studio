@@ -6,7 +6,7 @@ analyses alive and drives the project card, the taskbar and the finish notificat
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,8 +28,9 @@ from toystudio.app.widgets.analysis_stage import AnalysisStage
 from toystudio.app.widgets.banner import Banner
 from toystudio.app.widgets.empty_state import EmptyState
 from toystudio.app.widgets.icons import icon
-from toystudio.app.widgets.moment_card import MomentCard
+from toystudio.app.widgets.moment_card import PREVIEW_H, PREVIEW_W, MomentCard
 
+FEED_COALESCE_MS = 200
 FEED_LIMIT = 50  # cards shown; the rest is a single «и ещё N» line
 
 
@@ -161,6 +162,14 @@ class AnalysisScreen(QWidget):
         self._failure: tuple[str, str] | None = None
         self._cards: list[MomentCard] = []
         self._feed_shown: int | None = None  # feed_version on screen
+        self._epoch_shown: int | None = None
+        self._card_ids: list[int] = []
+        self._pixmaps: dict[int, QPixmap] = {}  # scaled previews by moment id
+        self.feed_rebuilds = 0
+        self._feed_timer = QTimer(self)
+        self._feed_timer.setSingleShot(True)
+        self._feed_timer.setInterval(FEED_COALESCE_MS)
+        self._feed_timer.timeout.connect(self._flush_feed)
         self.retranslate()
 
     # ---- vm -> widgets
@@ -211,28 +220,77 @@ class AnalysisScreen(QWidget):
         has = bool(vm.feed)
         self.found_empty.setVisible(not has)
         self._feed_scroll.setVisible(has)
-        if not force and self._feed_shown == vm.feed_version:
-            return
-        self._feed_shown = vm.feed_version
+        if force or self._epoch_shown != vm.feed_epoch:
+            self._rebuild_feed()
+        elif self._feed_shown != vm.feed_version and not self._feed_timer.isActive():
+            self._feed_timer.start()  # a burst of events becomes one update
+
+    def _rebuild_feed(self) -> None:
+        vm = self.vm
+        self._feed_timer.stop()
+        self.feed_rebuilds += 1
+        self._feed_shown, self._epoch_shown = vm.feed_version, vm.feed_epoch
         for card in self._cards:
             self._feed_box.removeWidget(card)
             card.deleteLater()
-        self._cards = []
-        for item in vm.feed[:FEED_LIMIT]:
+        self._cards, self._card_ids = [], []
+        shown = vm.feed[:FEED_LIMIT]
+        self._pixmaps = {k: v for k, v in self._pixmaps.items() if k in {i.id for i in shown}}
+        for item in shown:
             card = MomentCard()
             self._fill_card(card, item)
             self._feed_box.addWidget(card)
             self._cards.append(card)
+            self._card_ids.append(item.id)
         self._feed_box.removeWidget(self._more_label)
         self._feed_box.addWidget(self._more_label)
-        self._more_label.setText(self._more_text(len(vm.feed) - FEED_LIMIT))
-        self._more_label.setVisible(len(vm.feed) > FEED_LIMIT)
+        self._update_more()
+
+    def _flush_feed(self) -> None:
+        """Prepend the cards of moments found since the last update and trim the tail."""
+        vm = self.vm
+        if self._epoch_shown != vm.feed_epoch:
+            self._rebuild_feed()
+            return
+        self._feed_shown = vm.feed_version
+        known = set(self._card_ids)
+        fresh = []
+        for item in vm.feed:
+            if item.id in known:
+                break
+            fresh.append(item)
+        for item in reversed(fresh[:FEED_LIMIT]):  # oldest of the new ones first
+            card = MomentCard()
+            self._fill_card(card, item)
+            self._feed_box.insertWidget(0, card)
+            self._cards.insert(0, card)
+            self._card_ids.insert(0, item.id)
+        while len(self._cards) > FEED_LIMIT:
+            card = self._cards.pop()
+            self._pixmaps.pop(self._card_ids.pop(), None)
+            self._feed_box.removeWidget(card)
+            card.deleteLater()
+        self._update_more()
+
+    def _update_more(self) -> None:
+        extra = len(self.vm.feed) - FEED_LIMIT
+        self._more_label.setText(self._more_text(extra))
+        self._more_label.setVisible(extra > 0)
 
     def _fill_card(self, card: MomentCard, item: FeedItem) -> None:
         pixmap: QPixmap | None = None
         if item.preview:
-            loaded = QPixmap(str(self.vm.root / item.preview))
-            pixmap = None if loaded.isNull() else loaded  # a lost file is just a placeholder
+            pixmap = self._pixmaps.get(item.id)
+            if pixmap is None:
+                loaded = QPixmap(str(self.vm.root / item.preview))
+                if not loaded.isNull():  # a lost file is just a placeholder
+                    pixmap = loaded.scaled(
+                        PREVIEW_W,
+                        PREVIEW_H,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                    self._pixmaps[item.id] = pixmap
         ky = current_language() == "ky"
         reasons = [r.ky if ky else r.ru for r in item.reasons]
         card.set_data(
@@ -319,10 +377,16 @@ class AnalysisScreen(QWidget):
             QCoreApplication.translate("AnalysisScreen", "Пройденные этапы сохранены")
         )
         self.done_label.setText(QCoreApplication.translate("AnalysisScreen", "Анализ завершён"))
+        self._render_feed(force=True)  # reasons depend on the language; rebuilt once
         self._render()
-        self._render_feed(force=True)  # reasons depend on the language
 
     def changeEvent(self, e: QEvent) -> None:
         if e.type() == QEvent.Type.LanguageChange:
             self.retranslate()
         super().changeEvent(e)
+
+    def flush_feed(self) -> None:
+        """Apply pending feed updates now (tests; the timer does it otherwise)."""
+        if self._feed_timer.isActive():
+            self._feed_timer.stop()
+            self._flush_feed()

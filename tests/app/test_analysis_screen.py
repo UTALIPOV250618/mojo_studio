@@ -554,7 +554,9 @@ def _store_moments(project, rows_by_media, with_previews=True):
     return out
 
 
-def _emit_moment(jobs, project, mid, moment_id, kind="toast", start=10):
+def _emit_moment(
+    jobs, project, mid, moment_id, kind="toast", start=10, quality="clear", reasons=None
+):
     jobs.event.emit(
         job_id(project),
         Event(
@@ -567,6 +569,10 @@ def _emit_moment(jobs, project, mid, moment_id, kind="toast", start=10):
                 "end_us": (start + 20) * 1_000_000,
                 "score": 0.9,
                 "preview": f"cache/thumbs/m{moment_id}.jpg",
+                "quality_label": quality,
+                "reasons": [{"code": "toast", "ru": "Звучит тост", "ky": "Тост угулду"}]
+                if reasons is None
+                else reasons,
             },
         ),
     )
@@ -586,6 +592,7 @@ def test_feed_adds_cards_from_events_newest_first(qtbot, project, jobs, app_stor
     _emit_moment(jobs, project, ids[0], mids[0])
     _emit_moment(jobs, project, ids[0], mids[1], "dance", 100)
     _emit_moment(jobs, project, ids[0], mids[1], "dance", 100)  # duplicate event
+    screen.flush_feed()
     cards = screen.feed_cards()
     assert [c.type_text() for c in cards] == ["Танец", "Тост"]
     assert cards[0].has_preview()
@@ -602,9 +609,11 @@ def test_feed_caps_at_50(qtbot, project, jobs, app_store):
     mids = _store_moments(project, [(ids[0], rows)])
     for i, m in enumerate(mids):
         _emit_moment(jobs, project, ids[0], m, start=i * 30)
+    screen.flush_feed()
     assert len(screen.feed_cards()) == 50
     assert screen.more_text() == "и ещё 3"
     _emit_moment(jobs, project, ids[0], mids[-1] + 1)
+    screen.flush_feed()
     assert screen.more_text() == "и ещё 4"
 
 
@@ -629,6 +638,7 @@ def test_feed_reloads_on_moments_stage_done(qtbot, project, jobs, app_store):
     qtbot.addWidget(screen)
     mids = _store_moments(project, [(ids[0], [_row(ids[0]), _row(ids[0], start=90)])])
     _emit_moment(jobs, project, ids[0], mids[1], start=90)  # the first event was lost
+    screen.flush_feed()
     assert len(screen.feed_cards()) == 1
     emit_stage(jobs, project, ids[0], StageName.MOMENTS, StageState.DONE)
     assert len(screen.feed_cards()) == 2
@@ -702,3 +712,40 @@ def test_feed_retranslates_to_ky(qtbot, qapp, project, jobs, app_store):
         install_language(qapp, "ru")
     qapp.processEvents()
     assert screen.feed_cards()[0].reason_text() == "Звучит тост"
+
+
+def test_event_payload_reasons_and_quality_reach_the_card(qtbot, project, jobs, app_store):
+    _root, _store, ids = project
+    vm = make_vm(project, jobs, app_store)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    _emit_moment(jobs, project, ids[0], 7, quality="dark")
+    screen.flush_feed()
+    (card,) = screen.feed_cards()
+    assert card.quality_text() == "темновато"
+    assert card.reason_text() == "Звучит тост"
+
+
+def test_burst_of_300_events_renders_incrementally_without_store(
+    qtbot, project, jobs, app_store, monkeypatch
+):
+    _root, _store, ids = project
+    vm = make_vm(project, jobs, app_store)
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    opened = []
+    real = ProjectStore.open_readonly
+    monkeypatch.setattr(
+        ProjectStore, "open_readonly", classmethod(lambda c, r: opened.append(r) or real(r))
+    )
+    rebuilds = screen.feed_rebuilds
+    for i in range(1, 301):
+        _emit_moment(jobs, project, ids[0], i, start=i)
+    assert opened == []  # events carry everything the card shows
+    assert len(screen.feed_cards()) < 300
+    qtbot.waitUntil(lambda: len(screen.feed_cards()) == 50, timeout=2000)
+    assert screen.feed_rebuilds - rebuilds <= 2
+    assert screen.more_text() == "и ещё 250"
+    assert len(vm.feed) == 300 and vm.feed[0].id == 300
+    _emit_moment(jobs, project, ids[0], 300)  # duplicate
+    assert len(vm.feed) == 300
