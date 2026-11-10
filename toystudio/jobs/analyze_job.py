@@ -28,8 +28,6 @@ from toystudio.engine.analysis.quality import bad_intervals
 from toystudio.engine.analysis.scenes import detect_cuts
 from toystudio.engine.analysis.single_pass import FfmpegFailed, Outputs, Stopped, outputs_for
 from toystudio.engine.analysis.sync import sync_project
-from toystudio.engine.audio.events import detect_events
-from toystudio.engine.audio.vad import detect_speech
 from toystudio.engine.media.probe import check_integrity, probe_media
 from toystudio.engine.media.thumbs import card_thumbnail, frame_at
 from toystudio.engine.moments.group import group_ids
@@ -129,9 +127,11 @@ class _Run:
         return next(m for m in self.store.list_media() if m.id == media_id)
 
     def analyze_file(self, media_id: int) -> None:
+        ran = False  # an earlier stage ran in this job: MOMENTS must see its new output
         for stage in STAGE_ORDER:
-            if self.is_current(media_id, stage):
+            if self.is_current(media_id, stage) and not (ran and stage is StageName.MOMENTS):
                 continue
+            ran = True
             row = self.media(media_id)
             if not row.path.is_file():
                 self.store.set_media_status(media_id, MediaStatus.MISSING)
@@ -230,6 +230,10 @@ class _Run:
 
     def speech(self, row: MediaRow, out: Outputs) -> None:
         """Stage 2: speech regions (VAD) for the first half of the progress, events second."""
+        # imported here: an onnxruntime/model problem fails this stage, not every worker job
+        from toystudio.engine.audio.events import detect_events
+        from toystudio.engine.audio.vad import detect_speech
+
         if not out.wav.is_file():  # the file has no audio
             self.speech_left_s.pop(row.id, None)
             self.finish(row.id, StageName.SPEECH, StageState.SKIPPED)

@@ -1,19 +1,23 @@
 """Audio events (speech, applause, music, cheer, laughter) with the bundled YAMNet (ONNX)."""
 
 import csv
+import functools
 import time
 import wave
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-import onnxruntime as ort
 
 from toystudio.core.models import AudioEvent, AudioLabel
 from toystudio.engine.analysis.single_pass import Stopped
 from toystudio.engine.audio import ORT_THREADS
 from toystudio.engine.audio.wav import SAMPLE_RATE, read_blocks
 from toystudio.engine.models import model_path
+
+if TYPE_CHECKING:
+    import onnxruntime as ort
 
 HOP = 7_680  # samples between frames (0.48 s)
 WINDOW = 15_600  # samples one frame needs: 96 mel patches * 160 + 240 STFT overlap
@@ -62,12 +66,16 @@ def _resolve_indices(classes: Mapping[AudioLabel, tuple[str, ...]]) -> dict[Audi
     return out
 
 
-LABEL_INDICES = _resolve_indices(LABEL_CLASSES)
+@functools.cache
+def label_indices() -> dict[AudioLabel, list[int]]:
+    """Class-map indices of every label, read on first use (not at import)."""
+    return _resolve_indices(LABEL_CLASSES)
 
 
 def label_scores(scores: np.ndarray) -> np.ndarray:
     """[frames, 521] class scores -> [frames, len(LABELS)] (max over each label's classes)."""
-    return np.stack([scores[:, LABEL_INDICES[label]].max(axis=1) for label in LABELS], axis=1)
+    idx = label_indices()
+    return np.stack([scores[:, idx[label]].max(axis=1) for label in LABELS], axis=1)
 
 
 def events_from_label_scores(
@@ -102,14 +110,18 @@ def events_from_scores(
     return events_from_label_scores(media_id, label_scores(scores), duration_us)
 
 
-def _session() -> ort.InferenceSession:
+def _session() -> "ort.InferenceSession":
+    import onnxruntime as ort  # lazy: workers that never run stage 2 must not need it
+
     opts = ort.SessionOptions()
     opts.intra_op_num_threads = ORT_THREADS
     opts.inter_op_num_threads = 1
-    return ort.InferenceSession(str(model_path("yamnet")), opts, providers=["CPUExecutionProvider"])
+    # bytes, not a path: a non-ASCII install folder must not break model loading
+    model = model_path("yamnet").read_bytes()
+    return ort.InferenceSession(model, opts, providers=["CPUExecutionProvider"])
 
 
-def _class_scores(session: ort.InferenceSession, chunk: np.ndarray, frames: int) -> np.ndarray:
+def _class_scores(session: "ort.InferenceSession", chunk: np.ndarray, frames: int) -> np.ndarray:
     """First `frames` rows of the model output.
 
     The model's row count is off by one at some exact chunk lengths; frame k only depends on

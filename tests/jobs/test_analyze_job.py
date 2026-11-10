@@ -534,3 +534,70 @@ def test_failed_preview_or_grouping_does_not_fail_analysis(tmp_path: Path, monke
     finally:
         s.close()
     assert all(e["preview"] is None for e in events(ctx.msgs, "moment"))
+
+
+# ---- whole-branch review fixes (phase 2b)
+_NO_ORT = (
+    "import sys; sys.modules['onnxruntime'] = None; "  # `import onnxruntime` now raises
+    "from toystudio.jobs import worker_main; sys.exit(worker_main.main(sys.argv[1:]))"
+)
+
+
+def test_import_and_noop_jobs_run_without_onnxruntime(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+
+    from tests.jobs.worker_run import parse
+
+    project = _project(tmp_path, _clip(tmp_path, "первый.mp4", 2))
+    for kind in ("noop", "import"):
+        args = ["--job", kind, "--project", str(project), "--job-id", f"t-{kind}"]
+        r = subprocess.run(
+            [sys.executable, "-c", _NO_ORT, *args, "--app-db", str(tmp_path / "app.db")],
+            capture_output=True,
+            check=False,
+            timeout=120,
+        )
+        msgs = parse(r.stdout)
+        assert r.returncode == 0, r.stderr.decode(errors="replace")
+        assert msgs and isinstance(msgs[-1], Done), msgs[-3:]
+
+
+def test_broken_model_path_fails_speech_and_continues(tmp_path: Path, monkeypatch) -> None:
+    from toystudio.engine import models
+
+    project = _project(tmp_path, _clip(tmp_path, "первый.mp4", 2), _clip(tmp_path, "второй.mp4", 3))
+    monkeypatch.setattr(models, "MODELS_DIR", tmp_path / "нет моделей")
+    ctx = _Ctx(project, tmp_path / "app.db")
+    assert worker_main_run(ctx) == 0 and isinstance(ctx.msgs[-1], Done)
+    s = ProjectStore.open(project)
+    try:
+        for mid in (1, 2):
+            speech = s.stage(mid, StageName.SPEECH)
+            assert speech.state is StageState.FAILED and speech.error_code == "error"
+            assert s.stage(mid, StageName.PROXY).state is StageState.DONE
+        assert s.stage(0, StageName.SYNC).state is StageState.DONE
+        assert s.step() == "analysis_done"
+    finally:
+        s.close()
+
+
+def test_moments_rerun_when_an_earlier_stage_ran(tmp_path: Path) -> None:
+    project = _project(tmp_path, _clip(tmp_path, "первый.mp4", 2))
+    app_db = tmp_path / "app.db"
+    assert worker_main_run(_Ctx(project, app_db)) == 0
+    s = ProjectStore.open(project)
+    try:
+        assert s.stage(1, StageName.MOMENTS).state is StageState.DONE
+        s.set_stage(1, StageName.SCENES, StageState.INTERRUPTED)  # MOMENTS row stays current
+    finally:
+        s.close()
+    ctx = _Ctx(project, app_db)
+    assert worker_main_run(ctx) == 0
+    ran = [(e["stage"], e["state"]) for e in events(ctx.msgs, "stage") if e["media_id"] == 1]
+    assert ("scenes", "running") in ran and ("moments", "running") in ran
+    assert ("quality", "running") not in ran  # a stage that does not depend on it is reused
+    # nothing changed: a third run does no per-file work at all
+    ctx = _Ctx(project, app_db)
+    assert worker_main_run(ctx) == 0
+    assert not [e for e in events(ctx.msgs, "stage") if e["media_id"] == 1]

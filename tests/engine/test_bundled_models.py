@@ -84,3 +84,36 @@ def test_missing_source_fails_without_part(tmp_path, monkeypatch):
     _patched(monkeypatch, (tmp_path / "nope").as_uri())
     assert main([], models_dir=d) == 1
     assert not list(d.glob("*.part"))
+
+
+@needs_models
+def test_models_load_from_cyrillic_folder_as_bytes(tmp_path, monkeypatch):
+    import shutil
+
+    from tests.engine.test_vad import noise, write_wav
+    from toystudio.engine.audio import events
+    from toystudio.engine.audio.vad import detect_speech
+
+    ort = pytest.importorskip("onnxruntime")
+    folder = tmp_path / "Модели Той"
+    folder.mkdir()
+    for _url, _sha, filename in MODELS.values():
+        shutil.copy(models.MODELS_DIR / filename, folder / filename)
+    monkeypatch.setattr(models, "MODELS_DIR", folder)
+    real = ort.InferenceSession
+    loaded: list[type] = []
+
+    def spy(model, *a, **k):  # type: ignore[no-untyped-def]
+        loaded.append(type(model))
+        return real(model, *a, **k)
+
+    monkeypatch.setattr(ort, "InferenceSession", spy)
+    events.label_indices.cache_clear()
+    try:
+        wav = write_wav(tmp_path / "Звук той.wav", noise(2))
+        assert detect_speech(wav, on_progress=lambda _s: None, should_stop=lambda: False) == []
+        scores = events.label_scores_from_wav(wav)
+        assert scores.shape[1] == len(events.LABELS)
+    finally:
+        events.label_indices.cache_clear()
+    assert loaded == [bytes, bytes]  # never a path: no filesystem-encoding issue on Windows

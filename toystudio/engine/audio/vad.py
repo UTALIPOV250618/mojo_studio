@@ -5,7 +5,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import numpy as np
-import onnxruntime as ort
 
 from toystudio.core.models import SpeechRegion
 from toystudio.engine.analysis.single_pass import Stopped
@@ -62,12 +61,14 @@ def detect_speech(
     on_progress: Callable[[float], None],
     should_stop: Callable[[], bool],
 ) -> list[SpeechRegion]:
+    import onnxruntime as ort  # lazy: workers that never run stage 2 must not need it
+
     opts = ort.SessionOptions()
     opts.intra_op_num_threads = ORT_THREADS
     opts.inter_op_num_threads = 1
-    session = ort.InferenceSession(
-        str(model_path("silero_vad")), opts, providers=["CPUExecutionProvider"]
-    )
+    # bytes, not a path: a non-ASCII install folder must not break model loading
+    model = model_path("silero_vad").read_bytes()
+    session = ort.InferenceSession(model, opts, providers=["CPUExecutionProvider"])
     sr = np.array(SAMPLE_RATE, dtype=np.int64)
     state = np.zeros((2, 1, 128), dtype=np.float32)
     context = np.zeros(CONTEXT, dtype=np.float32)
