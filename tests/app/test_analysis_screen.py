@@ -749,3 +749,59 @@ def test_burst_of_300_events_renders_incrementally_without_store(
     assert len(vm.feed) == 300 and vm.feed[0].id == 300
     _emit_moment(jobs, project, ids[0], 300)  # duplicate
     assert len(vm.feed) == 300
+
+
+# ---- whole-branch review fixes (phase 2b)
+def test_speech_failure_lists_file_with_retry(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    _all_done(store, ids[0])
+    for st in (StageName.PROBE, StageName.PROXY):
+        store.set_stage(ids[1], st, StageState.DONE)
+    store.set_stage(ids[1], StageName.SPEECH, StageState.FAILED, error_code="error")
+    for st in (StageName.SCENES, StageName.QUALITY, StageName.MOMENTS):
+        store.set_stage(ids[1], st, StageState.PENDING)
+    store.set_stage(0, StageName.SYNC, StageState.RUNNING)
+    vm = make_vm(project, jobs, app_store)
+    assert vm.failed_files == ["IMG_0419.MP4"]
+    assert vm.failed_retryable
+    store.set_stage(0, StageName.SYNC, StageState.DONE)
+    jobs.active.clear()
+    jobs.finished.emit(job_id(project))
+    assert vm.done
+    assert "waiting" not in [s.state for s in vm.stages]
+    assert vm.overall_percent == 100.0
+    screen = AnalysisScreen(vm, notifier=FakeNotifier())
+    qtbot.addWidget(screen)
+    screen.show()
+    assert screen.failed_label.text() == "Не удалось проанализировать: IMG_0419.MP4"
+    assert not screen.retry_button.isHidden()
+
+
+def test_speech_progress_moves_stage_percent(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    for mid in ids:
+        for st in (StageName.PROBE, StageName.PROXY):
+            store.set_stage(mid, st, StageState.DONE)
+    store.set_stage(ids[0], StageName.SPEECH, StageState.RUNNING)
+    vm = make_vm(project, jobs, app_store)
+    assert vm.stages[1].state == "running"
+    before_stage, before_all = vm.stages[1].percent, vm.overall_percent
+    jobs.progress.emit(job_id(project), Progress("speech", 30, 60, str(ids[0])))
+    assert vm.stages[1].percent == pytest.approx(before_stage + 0.25)
+    assert vm.overall_percent > before_all
+    emit_stage(jobs, project, ids[0], StageName.SPEECH, StageState.INTERRUPTED)
+    assert (ids[0], StageName.SPEECH) not in vm._live
+
+
+def test_speech_row_says_no_sound_when_every_file_is_silent(qtbot, project, jobs, app_store):
+    _root, store, ids = project
+    for mid in ids:
+        _all_done(store, mid)  # SPEECH SKIPPED everywhere: no audio track at all
+    store.set_stage(0, StageName.SYNC, StageState.DONE)
+    vm = make_vm(project, jobs, app_store, running=False)
+    assert vm.stages[1].state == "done"
+    assert vm.stages[1].found_text == "Звука нет"
+    store.set_stage(ids[0], StageName.SPEECH, StageState.DONE)
+    vm._reload()
+    vm._compute()
+    assert vm.stages[1].found_text == "Найдено 0 участков речи"

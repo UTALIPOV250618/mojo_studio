@@ -8,6 +8,7 @@ _HEAVY_BIT_RATE = 40_000_000
 _BIG_SHORT_SIDE = 1440
 
 DEFAULT_X_RT: dict[str, float] = {"light": 8.0, "hfr_or_heavy": 4.0, "4k_hevc10": 0.7}
+SPEECH_X_RT = 30.0  # stage 2 (VAD + audio events) speed, x realtime of the audio
 
 
 def profile_key(info: MediaInfo) -> str:

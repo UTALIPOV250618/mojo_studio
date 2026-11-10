@@ -210,6 +210,12 @@
         <translation type="unfinished">%1 сүйлөө бөлүгү табылды</translation>
     </message>
     <message>
+        <location filename="../viewmodels/analysis_vm.py" line="545"/>
+        <source>Звука нет</source>
+        <translatorcomment>needs native-speaker review</translatorcomment>
+        <translation type="unfinished">Үн жок</translation>
+    </message>
+    <message>
         <location filename="../viewmodels/analysis_vm.py" line="556"/>
         <source>Моментов не найдено</source>
         <translatorcomment>needs native-speaker review</translatorcomment>

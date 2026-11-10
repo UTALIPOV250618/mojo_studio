@@ -11,8 +11,10 @@ from typing import Literal
 from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication, QObject, QTimer, Signal
 
 from toystudio.app.i18n import current_language
+from toystudio.core.eta import DEFAULT_X_RT, SPEECH_X_RT
 from toystudio.core.format import format_eta
 from toystudio.core.models import (
+    STAGE_ORDER,
     US_PER_S,
     Mark,
     MediaKind,
@@ -36,7 +38,10 @@ from toystudio.storage.project_store import ProjectStore
 UiState = Literal["waiting", "running", "done", "error", "later"]
 STOP_GRACE_MS = 10_000
 SYNC_SHARE = 1.0  # percentage points of the overall bar reserved for camera sync
-_MEASURED = (StageName.PROBE, StageName.PROXY, StageName.SCENES, StageName.QUALITY)
+# share of each per-file stage in the overall bar; SPEECH runs SPEECH_X_RT/proxy_x_rt times
+# faster than the proxy pass, the quick stages (probe, scenes, quality, moments) get a fixed share
+_STAGE_WEIGHT: dict[StageName, float] = dict.fromkeys(STAGE_ORDER, 1.0)
+_STAGE_WEIGHT[StageName.SPEECH] = DEFAULT_X_RT["light"] / SPEECH_X_RT
 _FINISHED = (StageState.DONE, StageState.SKIPPED)
 _SYNC_FINISHED = (*_FINISHED, StageState.FAILED)  # a failed camera sync does not block the result
 _ENDED_BY_USER = ("stopped", "cancelled")
@@ -134,7 +139,7 @@ class AnalysisVM(QObject):
         self.notify_when_done = True
         self._stopping = False
         self._remaining_s: float | None = None
-        self._live: dict[int, float] = {}
+        self._live: dict[tuple[int, StageName], float] = {}  # (media, stage) -> 0..1
         self._snap = _Snapshot()
         self._stop_timer = QTimer(self)
         self._stop_timer.setSingleShot(True)
@@ -255,12 +260,14 @@ class AnalysisVM(QObject):
         if job_id != self.job_id or not isinstance(msg, Progress):
             return
         self._active = True
-        if msg.stage == StageName.PROXY.value and msg.total > 0 and msg.media_id:
+        if msg.total > 0 and msg.media_id:  # media-seconds progress of a per-file stage
             try:
-                mid = int(msg.media_id)
+                key = (int(msg.media_id), StageName(msg.stage))
             except ValueError:
                 return
-            self._live[mid] = min(max(msg.done / msg.total, 0.0), 1.0)
+            if key[1] not in STAGE_ORDER:
+                return
+            self._live[key] = min(max(msg.done / msg.total, 0.0), 1.0)
             self._compute()
             self.changed.emit()
 
@@ -274,8 +281,10 @@ class AnalysisVM(QObject):
             self._remaining_s = float(payload.get("remaining_s", 0.0))
         elif kind == "stage":
             stage = str(payload.get("stage"))
-            if stage == StageName.PROXY.value:
-                self._live.pop(int(payload.get("media_id", 0)), None)
+            try:
+                self._live.pop((int(payload.get("media_id", 0)), StageName(stage)), None)
+            except ValueError:
+                pass
             self._reload()
             if stage == StageName.MOMENTS.value and str(payload.get("state")) == "done":
                 self._reload_feed()  # the store is the truth; events only keep the feed live
@@ -420,7 +429,7 @@ class AnalysisVM(QObject):
 
     def _file_failed(self, mid: int) -> bool:
         return any(
-            self._run_state(mid, s) is StageState.FAILED for s in (*_MEASURED, StageName.SYNC)
+            self._run_state(mid, s) is StageState.FAILED for s in (*STAGE_ORDER, StageName.SYNC)
         )
 
     def _file_state(self, mid: int, names: tuple[StageName, ...]) -> str:
@@ -462,21 +471,25 @@ class AnalysisVM(QObject):
         state = self._run_state(mid, stage)
         if state in _FINISHED or self._file_failed(mid):
             return 1.0
-        if stage is StageName.PROXY and state is StageState.RUNNING:
-            return self._live.get(mid, 0.0)
+        if state is StageState.RUNNING:
+            return self._live.get((mid, stage), 0.0)
         return 0.0
 
     def _fraction(self, names: tuple[StageName, ...]) -> float:
         weights = self._weights()
-        total = sum(weights.values()) * len(names)
+        total = sum(weights.values()) * sum(_STAGE_WEIGHT[st] for st in names)
         if total <= 0:
             return 0.0
-        done = sum(weights[mid] * self._unit(mid, st) for mid in weights for st in names)
+        done = sum(
+            weights[mid] * _STAGE_WEIGHT[st] * self._unit(mid, st)
+            for mid in weights
+            for st in names
+        )
         return done / total
 
     def _compute(self) -> None:
         snap = self._snap
-        measured = self._fraction(_MEASURED)
+        measured = self._fraction(STAGE_ORDER)
         sync_done = self._sync_state() in _SYNC_FINISHED
         if snap.files:
             self.overall_percent = round(
@@ -531,6 +544,10 @@ class AnalysisVM(QObject):
         if key == "quality":
             return self._quality_text()
         if key == "speech":
+            if snap.files and all(
+                self._run_state(m.id, StageName.SPEECH) is StageState.SKIPPED for m in snap.files
+            ):
+                return QCoreApplication.translate("AnalysisVM", "Звука нет")
             return _plural(
                 snap.speech_regions,
                 QT_TRANSLATE_NOOP("AnalysisVM", "Найден %1 участок речи"),

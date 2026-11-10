@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from toystudio.core.eta import DEFAULT_X_RT, profile_key, project_remaining_s
+from toystudio.core.eta import DEFAULT_X_RT, SPEECH_X_RT, profile_key, project_remaining_s
 from toystudio.core.models import (
     STAGE_ORDER,
     US_PER_S,
@@ -47,7 +47,6 @@ STAGE_VERSION: dict[StageName, int] = {s: 1 for s in (*STAGE_ORDER, StageName.SY
 # phase 2a wrote SKIPPED rows with version 1 for these two; 2 makes them run on old projects
 STAGE_VERSION[StageName.SPEECH] = 2
 STAGE_VERSION[StageName.MOMENTS] = 2
-SPEECH_X_RT = 30.0  # stage 2 (VAD + audio events) speed, x realtime of the audio
 SPEED_STAGE = "proxy"
 SPEED_ALPHA = 0.2
 ETA_EVERY_S = 2.0
