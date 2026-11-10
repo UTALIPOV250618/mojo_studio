@@ -3,6 +3,7 @@
 The Kyrgyz reason texts are drafts: needs native-speaker review.
 """
 
+from collections.abc import Callable
 from dataclasses import replace
 
 import numpy as np
@@ -60,6 +61,36 @@ def _words(us: int, lang: str) -> str:
     return " ".join(parts)
 
 
+# reasons that state the moment's length; rebuilt after snapping and merging (_with_durations)
+_DURATION_REASONS: dict[str, Callable[[int], Reason]] = {
+    "long_speech": lambda us: Reason(
+        "long_speech",
+        f"Долгая речь без пауз — {_words(us, 'ru')}",
+        f"Тыным албай узак сүйлөгөн — {_words(us, 'ky')}",
+    ),
+    "duration": lambda us: Reason(
+        "duration", f"Длится {_words(us, 'ru')}", f"Узактыгы {_words(us, 'ky')}"
+    ),
+    "music_calm": lambda us: Reason(
+        "music_calm",
+        f"Музыка {_words(us, 'ru')} без активного движения",
+        f"Активдүү кыймылсыз музыка {_words(us, 'ky')}",
+    ),
+    "applause": lambda us: Reason(
+        "applause", f"Аплодисменты {_words(us, 'ru')}", f"Кол чабуу {_words(us, 'ky')}"
+    ),
+}
+
+
+def _with_durations(m: MomentRow) -> MomentRow:
+    """Duration texts of the final moment (snapping/merging changed its length)."""
+    length = m.end_us - m.start_us
+    reasons = tuple(
+        _DURATION_REASONS[r.code](length) if r.code in _DURATION_REASONS else r for r in m.reasons
+    )
+    return replace(m, reasons=reasons)
+
+
 def _row(
     sig: FileSignals, type_: MomentType, start: int, end: int, score: float, reasons: list[Reason]
 ) -> MomentRow:
@@ -108,13 +139,7 @@ def _toasts(sig: FileSignals) -> list[MomentRow]:
             + 0.1 * min(1.0, length / _s(90))
             + 0.2 * (1 - music)
         )
-        reasons = [
-            Reason(
-                "long_speech",
-                f"Долгая речь без пауз — {_words(length, 'ru')}",
-                f"Тыным албай узак сүйлөгөн — {_words(length, 'ky')}",
-            )
-        ]
+        reasons = [_DURATION_REASONS["long_speech"](length)]
         if applause:
             reasons.append(Reason("end_applause", "В конце аплодисменты", "Аягында кол чабуу"))
         elif tail_music:
@@ -156,22 +181,12 @@ def _dances_and_music(sig: FileSignals) -> list[MomentRow]:
                     "Музыка и активное движение в кадре",
                     "Музыка жана кадрдагы активдүү кыймыл",
                 ),
-                Reason(
-                    "duration",
-                    f"Длится {_words(length, 'ru')}",
-                    f"Узактыгы {_words(length, 'ky')}",
-                ),
+                _DURATION_REASONS["duration"](length),
             ]
             score = 0.5 + 0.5 * excess
             out.append(_row(sig, MomentType.DANCE, e.start_us, e.end_us, score, reasons))
         elif length >= _s(MUSIC_MIN_S):
-            reasons = [
-                Reason(
-                    "music_calm",
-                    f"Музыка {_words(length, 'ru')} без активного движения",
-                    f"Активдүү кыймылсыз музыка {_words(length, 'ky')}",
-                )
-            ]
+            reasons = [_DURATION_REASONS["music_calm"](length)]
             score = 0.3 + 0.3 * min(1.0, length / _s(120))
             out.append(_row(sig, MomentType.MUSIC, e.start_us, e.end_us, score, reasons))
     return out
@@ -215,13 +230,7 @@ def _applause(sig: FileSignals, taken: list[MomentRow]) -> list[MomentRow]:
         mid = (e.start_us + e.end_us) // 2
         if any(t.start_us <= mid <= t.end_us for t in taken):
             continue
-        reasons = [
-            Reason(
-                "applause",
-                f"Аплодисменты {_words(length, 'ru')}",
-                f"Кол чабуу {_words(length, 'ky')}",
-            )
-        ]
+        reasons = [_DURATION_REASONS["applause"](length)]
         score = 0.3 + 0.4 * min(1.0, length / _s(15))
         out.append(_row(sig, MomentType.APPLAUSE, e.start_us, e.end_us, score, reasons))
     return out
@@ -282,6 +291,10 @@ def find_moments(sig: FileSignals) -> list[MomentRow]:
     entrances = _entrances(sig)
     found = toasts + _dances_and_music(sig) + entrances + _applause(sig, toasts + entrances)
     merged = _merge([_snap(sig, m) for m in found])
-    out = [_apply_quality(sig, m) for m in merged if m.end_us - m.start_us >= _s(MIN_MOMENT_S)]
+    out = [
+        _with_durations(_apply_quality(sig, m))
+        for m in merged
+        if m.end_us - m.start_us >= _s(MIN_MOMENT_S)
+    ]
     out.sort(key=lambda m: (m.start_us, m.end_us, m.type.value))
     return out

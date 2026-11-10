@@ -192,3 +192,18 @@ def test_motion_per_second_and_load_signals(tmp_path):
     # no npz: empty motion
     other = load_signals(store, tmp_path / "nowhere", mid)
     assert len(other.motion_per_s) == 0
+
+
+def test_duration_reasons_match_the_final_moment():
+    # applause 100-105 s and a cheer 103-125 s merge into one 25 s APPLAUSE moment
+    events = [ev(AudioLabel.APPLAUSE, 100, 105), ev(AudioLabel.CHEER, 103, 125)]
+    (m,) = find_moments(sig(events=events))
+    assert m.type is MomentType.APPLAUSE and m.end_us - m.start_us == 25 * S
+    assert [r.code for r in m.reasons] == ["applause"]
+    assert m.reasons[0].ru == "Аплодисменты 25 с"
+    assert m.reasons[0].ky == "Кол чабуу 25 сек"
+    # snapping to cuts changes the length: the reason follows it
+    music = [ev(AudioLabel.MUSIC, 100, 140)]
+    cuts = [int(98.5 * S), int(141.5 * S)]
+    (snapped,) = find_moments(sig(events=music, motion=np.ones(600), cuts=cuts))
+    assert snapped.reasons[0].ru == "Музыка 43 с без активного движения"
